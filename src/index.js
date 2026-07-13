@@ -28,46 +28,84 @@ export default {
         });
       }
 
-      // Общий каталог рецептов.
-      if (
-        request.method === "GET" &&
-        url.pathname === "/api/recipes"
-      ) {
-        const result = await env.DB.prepare(`
-          SELECT
-            id,
-            slug,
-            title,
-            description,
-            servings,
-            servings_text,
-            servings_min,
-            servings_max,
-            prep_minutes,
-            cook_minutes,
-            total_minutes,
-            source_name,
-            source_url,
-            image_key,
-            tips,
-            serve_with,
-            batch_tip,
-            highlight,
-            is_verified,
-            is_weekly_prep,
-            is_favorite,
-            created_at,
-            updated_at
-          FROM recipes
-          WHERE deleted_at IS NULL
-          ORDER BY title COLLATE NOCASE
-        `).all();
+    // Общий каталог рецептов.
+if (
+  request.method === "GET" &&
+  url.pathname === "/api/recipes"
+) {
+  const result = await env.DB.prepare(`
+    SELECT
+      r.id,
+      r.slug,
+      r.title,
+      r.description,
 
-        return jsonResponse({
-          success: true,
-          items: result.results ?? [],
-        });
-      }
+      r.servings,
+      r.servings_text,
+      r.servings_min,
+      r.servings_max,
+
+      r.prep_minutes,
+      r.cook_minutes,
+      r.total_minutes,
+
+      r.source_name,
+      r.source_url,
+
+      r.image_key,
+
+      r.is_verified,
+      r.is_weekly_prep,
+      r.is_favorite,
+
+      r.created_at,
+      r.updated_at,
+
+      COALESCE(
+        (
+          SELECT c.name
+          FROM categories c
+          INNER JOIN recipe_categories rc
+            ON rc.category_id = c.id
+          WHERE rc.recipe_id = r.id
+          ORDER BY c.name COLLATE NOCASE
+          LIMIT 1
+        ),
+        'Без категории'
+      ) AS category,
+
+      COALESCE(
+        (
+          SELECT GROUP_CONCAT(t.name, '|||')
+          FROM tags t
+          INNER JOIN recipe_tags rt
+            ON rt.tag_id = t.id
+          WHERE rt.recipe_id = r.id
+        ),
+        ''
+      ) AS tags_text
+
+    FROM recipes r
+
+    WHERE r.deleted_at IS NULL
+
+    ORDER BY r.title COLLATE NOCASE
+  `).all();
+
+  const items = (result.results ?? []).map(
+    ({ tags_text, ...recipe }) => ({
+      ...recipe,
+      tags: tags_text
+        ? tags_text.split("|||").filter(Boolean)
+        : [],
+    })
+  );
+
+  return jsonResponse({
+    success: true,
+    items,
+  });
+}
 
       // Полная карточка отдельного рецепта.
       const recipeMatch = url.pathname.match(
