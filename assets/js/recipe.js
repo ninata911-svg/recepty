@@ -103,8 +103,10 @@ function renderIngredients(items) {
 
     for (const ingredient of group.items) {
       const li = document.createElement("li");
+
       li.setAttribute("itemprop", "recipeIngredient");
       li.textContent = ingredient.raw_text || ingredient.name;
+
       list.append(li);
     }
 
@@ -116,15 +118,50 @@ function renderSteps(items) {
   const container = document.querySelector("#steps");
   container.replaceChildren();
 
-  let previousSection = null;
+  let visibleNumber = 0;
+  let component = null;
+  let activeSection = null;
 
   for (const step of items) {
-    if (step.section && step.section !== previousSection) {
-      const heading = document.createElement("h3");
-      heading.textContent = step.section;
-      container.append(heading);
-      previousSection = step.section;
+    /*
+     * Шаги с заполненным section показываются
+     * как вложенный ненумерованный блок.
+     *
+     * Например:
+     *
+     * Клёцки
+     * Приготовить тесто...
+     * Опустить тесто в суп...
+     */
+    if (step.section) {
+      if (!component || activeSection !== step.section) {
+        component = document.createElement("div");
+        component.className = "component";
+
+        const heading = document.createElement("h3");
+        heading.textContent = step.section;
+
+        component.append(heading);
+        container.append(component);
+
+        activeSection = step.section;
+      }
+
+      const paragraph = document.createElement("p");
+      paragraph.setAttribute("itemprop", "recipeInstructions");
+      paragraph.textContent = step.instruction;
+
+      component.append(paragraph);
+      continue;
     }
+
+    /*
+     * Основные шаги получают собственную
+     * последовательную нумерацию.
+     */
+    component = null;
+    activeSection = null;
+    visibleNumber += 1;
 
     const stepElement = document.createElement("div");
     stepElement.className = "step";
@@ -137,7 +174,7 @@ function renderSteps(items) {
 
     const number = document.createElement("div");
     number.className = "step-number";
-    number.textContent = step.position;
+    number.textContent = visibleNumber;
 
     const text = document.createElement("p");
     text.setAttribute("itemprop", "text");
@@ -154,9 +191,11 @@ function renderTags(tags) {
 
   for (const tag of tags) {
     const link = document.createElement("a");
+
     link.className = "tag";
     link.href = `/?tag=${encodeURIComponent(tag.name)}`;
     link.textContent = tag.name;
+
     container.append(link);
   }
 }
@@ -204,9 +243,14 @@ function renderNutrition(recipe) {
     const item = document.createElement("div");
     const strong = document.createElement("strong");
 
-    strong.textContent = `${String(value).replace(".", ",")} ${unit}`;
+    strong.textContent =
+      `${String(value).replace(".", ",")} ${unit}`;
 
-    item.append(strong, document.createTextNode(label.toLowerCase()));
+    item.append(
+      strong,
+      document.createTextNode(label.toLowerCase())
+    );
+
     container.append(item);
   }
 
@@ -223,10 +267,13 @@ function renderSource(recipe) {
 
   if (recipe.source_url) {
     const link = document.createElement("a");
+
     link.href = recipe.source_url;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
-    link.textContent = recipe.source_name || recipe.source_url;
+    link.textContent =
+      recipe.source_name || recipe.source_url;
+
     container.append(link);
   } else {
     container.textContent = recipe.source_name;
@@ -239,32 +286,56 @@ function updateStructuredData(recipe) {
   const data = {
     "@context": "https://schema.org/",
     "@type": "Recipe",
+
     name: recipe.title,
     description: recipe.description || "",
+
     image: recipe.image_key
-      ? [new URL(imageUrl(recipe.image_key), location.origin).href]
+      ? [
+          new URL(
+            imageUrl(recipe.image_key),
+            window.location.origin
+          ).href,
+        ]
       : undefined,
-    recipeCategory: recipe.categories?.[0]?.name,
-    keywords: recipe.tags?.map((tag) => tag.name).join(", "),
-    totalTime: recipe.total_minutes
-      ? `PT${recipe.total_minutes}M`
-      : undefined,
-    recipeYield: recipe.servings_text || undefined,
-    recipeIngredient: recipe.ingredients?.map(
-      (ingredient) => ingredient.raw_text
-    ),
-    recipeInstructions: recipe.steps?.map((step) => ({
-      "@type": "HowToStep",
-      position: step.position,
-      text: step.instruction,
-    })),
+
+    recipeCategory:
+      recipe.categories?.[0]?.name,
+
+    keywords:
+      recipe.tags
+        ?.map((tag) => tag.name)
+        .join(", "),
+
+    totalTime:
+      recipe.total_minutes
+        ? `PT${recipe.total_minutes}M`
+        : undefined,
+
+    recipeYield:
+      recipe.servings_text || undefined,
+
+    recipeIngredient:
+      recipe.ingredients?.map(
+        (ingredient) => ingredient.raw_text
+      ),
+
+    recipeInstructions:
+      recipe.steps?.map((step) => ({
+        "@type": "HowToStep",
+        position: step.position,
+        name: step.section || undefined,
+        text: step.instruction,
+      })),
   };
 
   Object.keys(data).forEach((key) => {
+    const value = data[key];
+
     if (
-      data[key] === undefined ||
-      data[key] === "" ||
-      (Array.isArray(data[key]) && !data[key].length)
+      value === undefined ||
+      value === "" ||
+      (Array.isArray(value) && value.length === 0)
     ) {
       delete data[key];
     }
@@ -275,7 +346,8 @@ function updateStructuredData(recipe) {
 }
 
 function renderRecipe(recipe) {
-  document.title = `${recipe.title} — Домашняя книга рецептов`;
+  document.title =
+    `${recipe.title} — Домашняя книга рецептов`;
 
   document
     .querySelector("#page-description")
@@ -284,7 +356,9 @@ function renderRecipe(recipe) {
       recipe.description || `Рецепт: ${recipe.title}`
     );
 
-  document.querySelector("#recipe-title").textContent = recipe.title;
+  document.querySelector("#recipe-title").textContent =
+    recipe.title;
+
   document.querySelector("#recipe-description").textContent =
     recipe.description || "";
 
@@ -297,6 +371,8 @@ function renderRecipe(recipe) {
     cover.src = imageUrl(recipe.image_key);
     cover.alt = recipe.title;
     cover.hidden = false;
+  } else {
+    cover.hidden = true;
   }
 
   const meta = document.querySelector("#recipe-meta");
@@ -320,8 +396,17 @@ function renderRecipe(recipe) {
   renderIngredients(recipe.ingredients || []);
   renderSteps(recipe.steps || []);
 
-  renderOptionalList("#tips-block", "#tips", recipe.tips);
-  renderOptionalList("#serve-block", "#serve-with", recipe.serve_with);
+  renderOptionalList(
+    "#tips-block",
+    "#tips",
+    recipe.tips
+  );
+
+  renderOptionalList(
+    "#serve-block",
+    "#serve-with",
+    recipe.serve_with
+  );
 
   renderOptionalText(
     "#highlight-block",
@@ -352,7 +437,9 @@ function renderRecipe(recipe) {
 
 async function loadRecipe() {
   if (!slug) {
-    showError("В адресе страницы не указано название рецепта.");
+    showError(
+      "В адресе страницы не указано название рецепта."
+    );
     return;
   }
 
@@ -364,7 +451,9 @@ async function loadRecipe() {
     const data = await response.json();
 
     if (!response.ok || !data.success || !data.item) {
-      throw new Error(data.error || "Рецепт не найден");
+      throw new Error(
+        data.error || "Рецепт не найден"
+      );
     }
 
     renderRecipe(data.item);
