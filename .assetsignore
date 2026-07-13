@@ -1,0 +1,13 @@
+**/.git
+**/.wrangler
+**/node_modules
+.gitignore
+.assetsignore
+wrangler.jsonc
+package*.json
+README.md
+src/
+migrations/
+scripts/
+.dev.vars*
+.env*
