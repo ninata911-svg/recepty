@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ru" itemscope itemtype="https://schema.org/Recipe">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Рецепт — Домашняя книга рецептов</title>
+  <meta
+    id="page-description"
+    name="description"
+    content="Рецепт из домашней книги"
+  >
+
+  <link rel="stylesheet" href="/assets/css/styles.css">
+
+  <script
+    id="recipe-jsonld"
+    type="application/ld+json"
+  >{}</script>
+</head>
+
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="/">
+        Домашняя <em>книга рецептов</em>
+      </a>
+
+      <div class="header-actions">
+        <select
+          class="theme-select"
+          data-theme-select
+          aria-label="Цветовая тема"
+        >
+          <option value="sage">Шалфей</option>
+          <option value="coffee">☕ Кофе</option>
+          <option value="sea">Морская</option>
+          <option value="cobalt">Кобальт</option>
+          <option value="cherry">❤️ Вишня</option>
+          <option value="plum">Сливовая</option>
+          <option value="turquoise">Бирюза</option>
+          <option value="lilac">Сиреневая</option>
+          <option value="dark">Тёмная</option>
+        </select>
+      </div>
+    </div>
+  </header>
+
+  <main class="recipe-shell">
+    <a class="back" href="/">← Все рецепты</a>
+
+    <p id="recipe-loading">Загружаем рецепт…</p>
+
+    <section
+      id="recipe-error"
+      class="block"
+      hidden
+    >
+      <h1>Рецепт не найден</h1>
+      <p id="recipe-error-text">
+        Не удалось загрузить карточку рецепта.
+      </p>
+      <p><a href="/">Вернуться в каталог</a></p>
+    </section>
+
+    <article id="recipe-content" hidden>
+      <img
+        id="recipe-cover"
+        class="cover"
+        itemprop="image"
+        alt=""
+        hidden
+      >
+
+      <section class="recipe-head">
+        <p id="recipe-category" class="kicker"></p>
+
+        <h1 id="recipe-title" itemprop="name"></h1>
+
+        <p
+          id="recipe-description"
+          class="lead"
+          itemprop="description"
+        ></p>
+
+        <div id="recipe-meta" class="recipe-meta"></div>
+
+        <div id="recipe-tags" class="recipe-tags"></div>
+      </section>
+
+      <section id="ingredients-block" class="block">
+        <h2>Ингредиенты</h2>
+        <div id="ingredients"></div>
+      </section>
+
+      <section id="steps-block" class="block">
+        <h2>Приготовление</h2>
+        <div id="steps"></div>
+      </section>
+
+      <section id="tips-block" class="block" hidden>
+        <h2>Хитрости</h2>
+        <div id="tips"></div>
+      </section>
+
+      <section id="serve-block" class="block" hidden>
+        <h2>С чем подавать</h2>
+        <div id="serve-with"></div>
+      </section>
+
+      <section id="highlight-block" class="block highlight" hidden>
+        <h2>Изюминка</h2>
+        <p id="highlight"></p>
+      </section>
+
+      <section id="batch-block" class="block" hidden>
+        <h2>Что приготовить заранее</h2>
+        <p id="batch-tip"></p>
+      </section>
+
+      <section id="notes-block" class="block" hidden>
+        <h2>Заметки</h2>
+        <p id="notes"></p>
+      </section>
+
+      <section id="nutrition-block" class="block" hidden>
+        <h2>Пищевая ценность</h2>
+        <p id="nutrition-basis"></p>
+
+        <div id="nutrition" class="nutrition"></div>
+      </section>
+
+      <section id="source-block" class="block" hidden>
+        <h2>Источник</h2>
+        <p id="source"></p>
+      </section>
+    </article>
+  </main>
+
+  <script src="/assets/js/theme.js"></script>
+  <script type="module" src="/assets/js/recipe.js"></script>
+</body>
+</html>
