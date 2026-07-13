@@ -2,13 +2,24 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "recepty",
   "compatibility_date": "2026-07-13",
+
   "observability": {
     "enabled": true
   },
+
   "assets": {
     "directory": "."
   },
+
   "compatibility_flags": [
     "nodejs_compat"
+  ],
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "recepty-db",
+      "database_id": "8dcf207c-0709-4129-b262-5c5bc5753e56"
+    }
   ]
 }
