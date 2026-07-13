@@ -1,0 +1,17 @@
+[
+  {
+    "id": "SUP-001",
+    "title": "Куриный суп с клёцками",
+    "description": "Домашний куриный суп с прозрачным бульоном, мягкими клёцками и свежей зеленью.",
+    "category": "Суп",
+    "tags": [
+      "Домашнее",
+      "Курица",
+      "Мамин рецепт"
+    ],
+    "servings": "6–8 порций",
+    "time": "1 час",
+    "image": "assets/images/kurinyj-sup-s-kleckami.png",
+    "url": "recipes/kurinyj-sup-s-kleckami.html"
+  }
+]

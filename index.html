@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Домашняя книга рецептов</title>
+<meta name="description" content="Домашняя база рецептов с категориями и метками Reset Box.">
+<link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a class="brand" href="index.html">Домашняя <em>книга рецептов</em></a>
+    <div class="header-actions">
+      <select class="theme-select" data-theme-select aria-label="Цветовая тема">
+        <option value="sage">🌿 Шалфей</option>
+        <option value="coffee">☕ Кофе</option>
+                <option value="sea">🌊 Морская</option>
+<option value="cobalt">💙 Кобальт</option>
+<option value="cherry">❤️ Вишня</option>
+<option value="plum">💜 Сливовая</option>
+<option value="turquoise">🩵 Бирюза</option>
+<option value="lilac">🪻 Сиреневая</option>
+        <option value="dark">🌙 Тёмная</option>
+      </select>
+    </div>
+  </div>
+</header>
+
+<main class="home">
+  <section class="hero">
+    <p class="kicker">Семейная кулинарная база</p>
+    <h1>Рецепты, которыми удобно пользоваться</h1>
+    <p>Поиск по названию, категориям и меткам. Каждый рецепт оформлен подробно и без потери важных этапов приготовления.</p>
+  </section>
+  <section class="controls">
+    <input id="search" type="search" placeholder="Найти рецепт, продукт или метку…">
+    <select id="category"><option value="">Все категории</option></select>
+  </section>
+  <section id="tag-cloud" class="tag-cloud"></section>
+  <section id="recipe-grid" class="grid"></section>
+  <p id="empty" hidden>По выбранным условиям рецептов пока нет.</p>
+</main>
+<footer class="footer">Домашняя книга рецептов</footer>
+<script src="assets/js/theme.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>
