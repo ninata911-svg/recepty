@@ -1,0 +1,660 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  >
+
+  <meta name="robots" content="noindex, nofollow">
+
+  <title>Добавить рецепт — Домашняя книга рецептов</title>
+
+  <link rel="stylesheet" href="/assets/css/styles.css">
+
+  <style>
+    .admin-shell {
+      max-width: 980px;
+      margin: auto;
+      padding: 28px 24px 90px;
+    }
+
+    .admin-intro {
+      margin-bottom: 24px;
+    }
+
+    .admin-intro h1 {
+      margin: 10px 0 12px;
+      font: 700 clamp(40px, 7vw, 70px) / 1 Georgia, serif;
+      letter-spacing: -.04em;
+    }
+
+    .admin-intro p {
+      max-width: 760px;
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.6;
+    }
+
+    .admin-form {
+      display: grid;
+      gap: 20px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .form-field {
+      display: grid;
+      gap: 8px;
+    }
+
+    .form-field.full {
+      grid-column: 1 / -1;
+    }
+
+    .form-field label,
+    .fieldset-title {
+      font-weight: 800;
+    }
+
+    .form-field small,
+    .form-help {
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 130px;
+      resize: vertical;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--paper);
+      color: var(--text);
+      padding: 15px 16px;
+      font: inherit;
+      line-height: 1.55;
+      outline: none;
+    }
+
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow:
+        0 0 0 4px
+        color-mix(in srgb, var(--accent) 18%, transparent);
+    }
+
+    .large-textarea {
+      min-height: 230px;
+    }
+
+    .checkbox-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .checkbox-row {
+      display: grid;
+      grid-template-columns: 22px 1fr;
+      gap: 10px;
+      align-items: start;
+      cursor: pointer;
+    }
+
+    .checkbox-row input {
+      width: 18px;
+      height: 18px;
+      margin: 2px 0 0;
+    }
+
+    .checkbox-row strong {
+      display: block;
+      margin-bottom: 3px;
+    }
+
+    .checkbox-row span {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .admin-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .primary-button,
+    .secondary-button,
+    .danger-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 18px;
+      font: inherit;
+      font-weight: 850;
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    .primary-button {
+      background: var(--accent);
+      color: white;
+    }
+
+    .secondary-button {
+      background: var(--soft);
+      color: var(--accent-dark);
+    }
+
+    .danger-button {
+      background: var(--paper);
+      color: var(--text);
+      border: 1px solid var(--line);
+    }
+
+    button:disabled {
+      opacity: .55;
+      cursor: wait;
+    }
+
+    .status-message {
+      margin: 14px 0 0;
+      padding: 14px 16px;
+      border-radius: 16px;
+      background: var(--highlight);
+      border: 1px solid var(--line);
+      line-height: 1.5;
+    }
+
+    .status-message.error {
+      border-color: #b95b5b;
+    }
+
+    .status-message.success {
+      border-color: var(--accent);
+    }
+
+    .status-message a {
+      font-weight: 850;
+      color: var(--accent-dark);
+    }
+
+    .editor-bar {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 22px;
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: var(--soft);
+    }
+
+    .editor-bar p {
+      margin: 0;
+      font-weight: 800;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    @media (max-width: 720px) {
+      .admin-shell {
+        padding-left: 16px;
+        padding-right: 16px;
+      }
+
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .form-field.full {
+        grid-column: auto;
+      }
+
+      .admin-actions > * {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="/">
+        Домашняя <em>книга рецептов</em>
+      </a>
+
+      <div class="header-actions">
+        <select
+          class="theme-select"
+          data-theme-select
+          aria-label="Цветовая тема"
+        >
+          <option value="sage">Шалфей</option>
+          <option value="coffee">☕ Кофе</option>
+          <option value="sea">Морская</option>
+          <option value="cobalt">Кобальт</option>
+          <option value="cherry">❤️ Вишня</option>
+          <option value="plum">Сливовая</option>
+          <option value="turquoise">Бирюза</option>
+          <option value="lilac">Сиреневая</option>
+          <option value="dark">Тёмная</option>
+        </select>
+      </div>
+    </div>
+  </header>
+
+  <main class="admin-shell">
+    <a class="back" href="/">← Вернуться в книгу</a>
+
+    <section id="login-section">
+      <div class="admin-intro">
+        <p class="kicker">Режим редактора</p>
+        <h1>Управление книгой</h1>
+
+        <p>
+          Введите секретный ключ редактора. Он сохранится только
+          до закрытия этой вкладки браузера.
+        </p>
+      </div>
+
+      <form id="login-form" class="block admin-form">
+        <div class="form-field">
+          <label for="editor-key">Ключ редактора</label>
+
+          <input
+            id="editor-key"
+            name="editorKey"
+            type="password"
+            autocomplete="off"
+            required
+          >
+        </div>
+
+        <div class="admin-actions">
+          <button
+            id="login-button"
+            class="primary-button"
+            type="submit"
+          >
+            Войти
+          </button>
+
+          <a class="secondary-button" href="/">
+            Отмена
+          </a>
+        </div>
+
+        <p id="login-status" class="status-message" hidden></p>
+      </form>
+    </section>
+
+    <section id="editor-section" hidden>
+      <div class="editor-bar">
+        <p>Режим редактора включён</p>
+
+        <div class="admin-actions">
+          <a class="secondary-button" href="/">
+            Открыть книгу
+          </a>
+
+          <button
+            id="logout-button"
+            class="danger-button"
+            type="button"
+          >
+            Выйти
+          </button>
+        </div>
+      </div>
+
+      <div class="admin-intro">
+        <p class="kicker">Новая карточка</p>
+        <h1>Добавить рецепт</h1>
+
+        <p>
+          После сохранения рецепт сразу появится в общем каталоге.
+          Обновлять версию сайта не потребуется.
+        </p>
+      </div>
+
+      <form id="recipe-form" class="admin-form">
+        <section class="block">
+          <h2>Основное</h2>
+
+          <div class="form-grid">
+            <div class="form-field full">
+              <label for="title">Название *</label>
+
+              <input
+                id="title"
+                name="title"
+                type="text"
+                maxlength="200"
+                required
+              >
+            </div>
+
+            <div class="form-field full">
+              <label for="description">Краткое описание</label>
+
+              <textarea
+                id="description"
+                name="description"
+              ></textarea>
+            </div>
+
+            <div class="form-field">
+              <label for="category">Категория</label>
+
+              <input
+                id="category"
+                name="category"
+                type="text"
+                placeholder="Например: Супы"
+              >
+            </div>
+
+            <div class="form-field">
+              <label for="tags">Метки</label>
+
+              <input
+                id="tags"
+                name="tags"
+                type="text"
+                placeholder="Курица, домашнее, быстро"
+              >
+
+              <small>
+                Разделяйте метки запятыми.
+              </small>
+            </div>
+
+            <div class="form-field">
+              <label for="servings">Базовое количество порций</label>
+
+              <input
+                id="servings"
+                name="servings"
+                type="number"
+                min="0"
+                step="0.5"
+                placeholder="6"
+              >
+            </div>
+
+            <div class="form-field">
+              <label for="servings-text">Как показать порции</label>
+
+              <input
+                id="servings-text"
+                name="servingsText"
+                type="text"
+                placeholder="6–8 порций"
+              >
+            </div>
+
+            <div class="form-field">
+              <label for="total-minutes">Общее время, минут</label>
+
+              <input
+                id="total-minutes"
+                name="totalMinutes"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="60"
+              >
+            </div>
+
+            <div class="form-field">
+              <label for="image-key">Ссылка на фотографию</label>
+
+              <input
+                id="image-key"
+                name="imageKey"
+                type="url"
+                placeholder="https://..."
+              >
+
+              <small>
+                Загрузка собственной фотографии появится отдельным этапом.
+              </small>
+            </div>
+          </div>
+        </section>
+
+        <section class="block">
+          <h2>Ингредиенты *</h2>
+
+          <div class="form-field">
+            <label for="ingredients">
+              Каждый ингредиент с новой строки
+            </label>
+
+            <textarea
+              id="ingredients"
+              name="ingredients"
+              class="large-textarea"
+              required
+              placeholder="[Для супа]
+Курица — 500–700 г
+Картофель — 4–5 шт.
+Соль — по вкусу
+
+[Для клёцок]
+Яйцо — 1 шт.
+Мука — 5–7 ст. л."
+            ></textarea>
+
+            <small>
+              Строка в квадратных скобках создаёт раздел:
+              [Для супа]. Строка [] завершает раздел.
+            </small>
+          </div>
+        </section>
+
+        <section class="block">
+          <h2>Приготовление *</h2>
+
+          <div class="form-field">
+            <label for="steps">
+              Каждый шаг с новой строки
+            </label>
+
+            <textarea
+              id="steps"
+              name="steps"
+              class="large-textarea"
+              required
+              placeholder="1. Сварить куриный бульон.
+2. Добавить картофель.
+
+[Клёцки]
+Смешать яйцо, молоко и муку.
+Опускать тесто в кипящий суп.
+
+[]
+5. Добавить зелень и дать супу настояться."
+            ></textarea>
+
+            <small>
+              Обычные строки становятся нумерованными шагами.
+              Блок [Клёцки] показывается как вложенный блок без номеров.
+              Строка [] возвращает обычную нумерацию.
+            </small>
+          </div>
+        </section>
+
+        <section class="block">
+          <h2>Полезные дополнения</h2>
+
+          <div class="form-grid">
+            <div class="form-field full">
+              <label for="tips">Хитрости</label>
+
+              <textarea
+                id="tips"
+                name="tips"
+                placeholder="Каждая хитрость с новой строки или через точку с запятой."
+              ></textarea>
+            </div>
+
+            <div class="form-field full">
+              <label for="serve-with">С чем подавать</label>
+
+              <textarea
+                id="serve-with"
+                name="serveWith"
+              ></textarea>
+            </div>
+
+            <div class="form-field full">
+              <label for="highlight">Изюминка</label>
+
+              <textarea
+                id="highlight"
+                name="highlight"
+              ></textarea>
+            </div>
+
+            <div class="form-field full">
+              <label for="batch-tip">
+                Что можно приготовить заранее или побольше
+              </label>
+
+              <textarea
+                id="batch-tip"
+                name="batchTip"
+              ></textarea>
+            </div>
+
+            <div class="form-field full">
+              <label for="notes">Заметки</label>
+
+              <textarea
+                id="notes"
+                name="notes"
+              ></textarea>
+            </div>
+          </div>
+        </section>
+
+        <section class="block">
+          <h2>Источник</h2>
+
+          <div class="form-grid">
+            <div class="form-field">
+              <label for="source-name">Название источника</label>
+
+              <input
+                id="source-name"
+                name="sourceName"
+                type="text"
+                placeholder="Семейный рецепт"
+              >
+            </div>
+
+            <div class="form-field">
+              <label for="source-url">Ссылка на источник</label>
+
+              <input
+                id="source-url"
+                name="sourceUrl"
+                type="url"
+                placeholder="https://..."
+              >
+            </div>
+          </div>
+        </section>
+
+        <section class="block">
+          <h2>Отметки</h2>
+
+          <div class="checkbox-grid">
+            <label class="checkbox-row">
+              <input
+                name="isVerified"
+                type="checkbox"
+              >
+
+              <span>
+                <strong>Проверено</strong>
+                Рецепт уже приготовлен и одобрен.
+              </span>
+            </label>
+
+            <label class="checkbox-row">
+              <input
+                name="isFavorite"
+                type="checkbox"
+              >
+
+              <span>
+                <strong>Избранное</strong>
+                Показывать сердечко в книге.
+              </span>
+            </label>
+
+            <label class="checkbox-row">
+              <input
+                name="isWeeklyPrep"
+                type="checkbox"
+              >
+
+              <span>
+                <strong>Заготовки на неделю</strong>
+                Ставьте только для полноценной заготовки, которую можно
+                заморозить или завакуумировать и позднее быстро довести
+                до готовности. Супы и обычные готовые блюда эту метку
+                не получают.
+              </span>
+            </label>
+          </div>
+        </section>
+
+        <div class="admin-actions">
+          <button
+            id="save-button"
+            class="primary-button"
+            type="submit"
+          >
+            Сохранить рецепт
+          </button>
+
+          <button
+            id="reset-button"
+            class="secondary-button"
+            type="button"
+          >
+            Очистить форму
+          </button>
+
+          <a class="danger-button" href="/">
+            Отмена
+          </a>
+        </div>
+
+        <p id="save-status" class="status-message" hidden></p>
+      </form>
+    </section>
+  </main>
+
+  <script src="/assets/js/theme.js"></script>
+  <script type="module" src="/assets/js/admin.js"></script>
+</body>
+</html>
