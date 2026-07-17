@@ -1,5 +1,13 @@
 const ADMIN_KEY_STORAGE = "receptyAdminKey";
 
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+
+const ALLOWED_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+
 const loginSection =
   document.querySelector("#login-section");
 
@@ -32,6 +40,26 @@ const resetButton =
 
 const saveStatus =
   document.querySelector("#save-status");
+
+const imageInput =
+  document.querySelector("#image-file");
+
+const imageStatus =
+  document.querySelector("#image-status");
+
+const imagePreviewCard =
+  document.querySelector("#image-preview-card");
+
+const imagePreview =
+  document.querySelector("#image-preview");
+
+const imageFileInfo =
+  document.querySelector("#image-file-info");
+
+const removeImageButton =
+  document.querySelector("#remove-image-button");
+
+let previewObjectUrl = null;
 
 function getStoredKey() {
   return sessionStorage.getItem(ADMIN_KEY_STORAGE) || "";
@@ -74,6 +102,81 @@ function hideStatus(element) {
   element.replaceChildren();
 }
 
+function formatFileSize(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return "0 КБ";
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${Math.ceil(bytes / 1024)} КБ`;
+  }
+
+  return `${(bytes / 1024 / 1024)
+    .toFixed(2)
+    .replace(".", ",")} МБ`;
+}
+
+function clearImagePreview() {
+  if (previewObjectUrl) {
+    URL.revokeObjectURL(previewObjectUrl);
+    previewObjectUrl = null;
+  }
+
+  imageInput.value = "";
+  imagePreview.removeAttribute("src");
+  imageFileInfo.textContent = "";
+  imagePreviewCard.hidden = true;
+  hideStatus(imageStatus);
+}
+
+function validateImageFile(file) {
+  if (!file) {
+    return null;
+  }
+
+  if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+    return "Поддерживаются только фотографии JPG, PNG и WebP.";
+  }
+
+  if (file.size <= 0) {
+    return "Выбранный файл пуст.";
+  }
+
+  if (file.size > MAX_IMAGE_BYTES) {
+    return "Размер фотографии не должен превышать 8 МБ.";
+  }
+
+  return null;
+}
+
+function showImagePreview(file) {
+  clearImagePreview();
+
+  const validationError = validateImageFile(file);
+
+  if (validationError) {
+    setStatus(
+      imageStatus,
+      validationError,
+      "error"
+    );
+
+    return;
+  }
+
+  const dataTransfer = new DataTransfer();
+  dataTransfer.items.add(file);
+  imageInput.files = dataTransfer.files;
+
+  previewObjectUrl = URL.createObjectURL(file);
+
+  imagePreview.src = previewObjectUrl;
+  imageFileInfo.textContent =
+    `${file.name} · ${formatFileSize(file.size)}`;
+
+  imagePreviewCard.hidden = false;
+}
+
 async function verifyKey(key) {
   const response = await fetch(
     "/api/admin/recipes/search?query=editor-check",
@@ -90,7 +193,9 @@ async function verifyKey(key) {
   }
 
   if (!response.ok) {
-    const data = await response.json().catch(() => null);
+    const data = await response
+      .json()
+      .catch(() => null);
 
     throw new Error(
       data?.message ||
@@ -303,6 +408,13 @@ function parseTags(value) {
     .filter(Boolean);
 }
 
+function normalizeComparison(value) {
+  return String(value || "")
+    .trim()
+    .toLocaleLowerCase("ru-RU")
+    .replace(/\s+/g, " ");
+}
+
 function getFieldValue(name) {
   const field =
     recipeForm.elements.namedItem(name);
@@ -319,9 +431,19 @@ function getCheckboxValue(name) {
   return Boolean(field?.checked);
 }
 
+function getSelectedImageFile() {
+  return imageInput.files?.[0] || null;
+}
+
 function buildPayload() {
   const servings =
     parseNumber(getFieldValue("servings"));
+
+  const prepMinutes =
+    parseNumber(getFieldValue("prepMinutes"));
+
+  const cookMinutes =
+    parseNumber(getFieldValue("cookMinutes"));
 
   const totalMinutes =
     parseNumber(getFieldValue("totalMinutes"));
@@ -329,9 +451,6 @@ function buildPayload() {
   const category =
     getFieldValue("category") ||
     "Без категории";
-
-  const imageKey =
-    getFieldValue("imageKey");
 
   return {
     title: getFieldValue("title"),
@@ -354,13 +473,18 @@ function buildPayload() {
           : null
       ),
 
+    prepMinutes,
+    cookMinutes,
     totalMinutes,
 
-    imageKey:
-      imageKey || null,
+    imageKey: null,
+
+    imageCredit:
+      getFieldValue("imageCredit") || null,
 
     sourceName:
-      getFieldValue("sourceName") || null,
+      getFieldValue("sourceName") ||
+      "Рецепт от Пети",
 
     sourceUrl:
       getFieldValue("sourceUrl") || null,
@@ -401,7 +525,7 @@ function buildPayload() {
   };
 }
 
-function validatePayload(payload) {
+function validatePayload(payload, imageFile) {
   const errors = [];
 
   if (!payload.title) {
@@ -420,7 +544,158 @@ function validatePayload(payload) {
     );
   }
 
+  const imageError =
+    validateImageFile(imageFile);
+
+  if (imageError) {
+    errors.push(imageError);
+  }
+
   return errors;
+}
+
+async function findExistingRecipe(
+  key,
+  title,
+  sourceUrl
+) {
+  const queries = [title];
+
+  if (sourceUrl) {
+    queries.push(sourceUrl);
+  }
+
+  for (const query of queries) {
+    const response = await fetch(
+      `/api/admin/recipes/search?query=${
+        encodeURIComponent(query)
+      }`,
+      {
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${key}`,
+        },
+      }
+    );
+
+    if (response.status === 401) {
+      removeKey();
+      showLogin();
+
+      throw new Error(
+        "Срок режима редактора закончился. Введите ключ ещё раз."
+      );
+    }
+
+    const data = await response
+      .json()
+      .catch(() => null);
+
+    if (!response.ok || !data?.success) {
+      throw new Error(
+        data?.message ||
+        data?.error ||
+        "Не удалось проверить дубликаты."
+      );
+    }
+
+    const exactMatch = (data.items || []).find(
+      (item) => {
+        const sameTitle =
+          normalizeComparison(item.title) ===
+          normalizeComparison(title);
+
+        const sameSource =
+          sourceUrl &&
+          item.source_url === sourceUrl;
+
+        return sameTitle || sameSource;
+      }
+    );
+
+    if (exactMatch) {
+      return exactMatch;
+    }
+  }
+
+  return null;
+}
+
+async function uploadImage(file, title, key) {
+  if (!file) {
+    return null;
+  }
+
+  const formData = new FormData();
+
+  formData.append("image", file);
+  formData.append("title", title);
+
+  const response = await fetch(
+    "/api/admin/images",
+    {
+      method: "POST",
+
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${key}`,
+      },
+
+      body: formData,
+    }
+  );
+
+  const data = await response
+    .json()
+    .catch(() => null);
+
+  if (response.status === 401) {
+    removeKey();
+    showLogin();
+
+    throw new Error(
+      "Срок режима редактора закончился. Введите ключ ещё раз."
+    );
+  }
+
+  if (
+    !response.ok ||
+    !data?.success ||
+    !data?.item?.imageKey
+  ) {
+    throw new Error(
+      data?.message ||
+      data?.error ||
+      "Не удалось загрузить фотографию."
+    );
+  }
+
+  return data.item;
+}
+
+function showDuplicate(existing) {
+  saveStatus.replaceChildren();
+  saveStatus.className =
+    "status-message error";
+
+  const text = document.createElement("span");
+
+  text.textContent =
+    `Рецепт «${existing.title}» уже существует. `;
+
+  const link = document.createElement("a");
+
+  link.href = existing.url;
+  link.textContent =
+    "Открыть существующий рецепт";
+
+  saveStatus.append(text, link);
+  saveStatus.hidden = false;
+
+  saveStatus.scrollIntoView({
+    behavior: "smooth",
+    block: "center",
+  });
 }
 
 function showSavedRecipe(item) {
@@ -446,6 +721,26 @@ function showSavedRecipe(item) {
     block: "center",
   });
 }
+
+imageInput.addEventListener(
+  "change",
+  () => {
+    const file =
+      imageInput.files?.[0] || null;
+
+    if (!file) {
+      clearImagePreview();
+      return;
+    }
+
+    showImagePreview(file);
+  }
+);
+
+removeImageButton.addEventListener(
+  "click",
+  clearImagePreview
+);
 
 loginForm.addEventListener(
   "submit",
@@ -503,6 +798,7 @@ logoutButton.addEventListener(
   () => {
     removeKey();
     recipeForm.reset();
+    clearImagePreview();
     hideStatus(saveStatus);
     showLogin();
   }
@@ -520,6 +816,7 @@ resetButton.addEventListener(
     }
 
     recipeForm.reset();
+    clearImagePreview();
     hideStatus(saveStatus);
 
     document
@@ -541,8 +838,13 @@ recipeForm.addEventListener(
       return;
     }
 
+    const imageFile =
+      getSelectedImageFile();
+
     const payload = buildPayload();
-    const errors = validatePayload(payload);
+
+    const errors =
+      validatePayload(payload, imageFile);
 
     if (errors.length) {
       setStatus(
@@ -555,9 +857,50 @@ recipeForm.addEventListener(
     }
 
     saveButton.disabled = true;
-    saveButton.textContent = "Сохраняем…";
+    saveButton.textContent =
+      "Проверяем дубликаты…";
 
     try {
+      const existing =
+        await findExistingRecipe(
+          key,
+          payload.title,
+          payload.sourceUrl
+        );
+
+      if (existing) {
+        showDuplicate(existing);
+        return;
+      }
+
+      if (imageFile) {
+        saveButton.textContent =
+          "Загружаем фотографию…";
+
+        setStatus(
+          saveStatus,
+          "Фотография загружается в хранилище…"
+        );
+
+        const uploadedImage =
+          await uploadImage(
+            imageFile,
+            payload.title,
+            key
+          );
+
+        payload.imageKey =
+          uploadedImage.imageKey;
+      }
+
+      saveButton.textContent =
+        "Сохраняем рецепт…";
+
+      setStatus(
+        saveStatus,
+        "Сохраняем карточку рецепта…"
+      );
+
       const response = await fetch(
         "/api/admin/recipes",
         {
@@ -587,38 +930,15 @@ recipeForm.addEventListener(
       }
 
       if (response.status === 409) {
-        const existingUrl =
-          data?.existing?.url;
-
-        saveStatus.replaceChildren();
-        saveStatus.className =
-          "status-message error";
-
-        const text =
-          document.createElement("span");
-
-        text.textContent =
-          data?.message ||
-          "Такой рецепт уже существует.";
-
-        saveStatus.append(text);
-
-        if (existingUrl) {
-          const space =
-            document.createTextNode(" ");
-
-          const link =
-            document.createElement("a");
-
-          link.href = existingUrl;
-          link.textContent =
-            "Открыть существующий рецепт";
-
-          saveStatus.append(space, link);
+        if (data?.existing) {
+          showDuplicate(data.existing);
+          return;
         }
 
-        saveStatus.hidden = false;
-        return;
+        throw new Error(
+          data?.message ||
+          "Такой рецепт уже существует."
+        );
       }
 
       if (
@@ -659,7 +979,8 @@ async function initializeEditor() {
   }
 
   try {
-    const valid = await verifyKey(storedKey);
+    const valid =
+      await verifyKey(storedKey);
 
     if (!valid) {
       removeKey();
