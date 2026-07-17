@@ -1,4 +1,5 @@
 const ADMIN_KEY_STORAGE = "receptyAdminKey";
+const IMPORTER_ORIGIN = "https://recepty-importer.ninata911.workers.dev";
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
@@ -28,6 +29,66 @@ const keyInput =
 
 const logoutButton =
   document.querySelector("#logout-button");
+
+const importForm =
+  document.querySelector("#import-form");
+
+const importUrlInput =
+  document.querySelector("#import-url");
+
+const importButton =
+  document.querySelector("#import-button");
+
+const importStatus =
+  document.querySelector("#import-status");
+
+const importPreview =
+  document.querySelector("#import-preview");
+
+const importPreviewImageWrap =
+  document.querySelector("#import-preview-image-wrap");
+
+const importPreviewImage =
+  document.querySelector("#import-preview-image");
+
+const importPreviewTitle =
+  document.querySelector("#import-preview-title");
+
+const importPreviewDescription =
+  document.querySelector("#import-preview-description");
+
+const importPreviewSource =
+  document.querySelector("#import-preview-source");
+
+const importPreviewMeta =
+  document.querySelector("#import-preview-meta");
+
+const importPreviewWarnings =
+  document.querySelector("#import-preview-warnings");
+
+const importPreviewIngredients =
+  document.querySelector("#import-preview-ingredients");
+
+const importPreviewSteps =
+  document.querySelector("#import-preview-steps");
+
+const importIngredientsHeading =
+  document.querySelector("#import-ingredients-heading");
+
+const importStepsHeading =
+  document.querySelector("#import-steps-heading");
+
+const importImageChoice =
+  document.querySelector("#import-image-choice");
+
+const importImageCheckbox =
+  document.querySelector("#import-image-checkbox");
+
+const applyImportButton =
+  document.querySelector("#apply-import-button");
+
+const cancelImportButton =
+  document.querySelector("#cancel-import-button");
 
 const recipeForm =
   document.querySelector("#recipe-form");
@@ -60,6 +121,8 @@ const removeImageButton =
   document.querySelector("#remove-image-button");
 
 let previewObjectUrl = null;
+let currentImport = null;
+let importedImageSourceUrl = null;
 
 function getStoredKey() {
   return sessionStorage.getItem(ADMIN_KEY_STORAGE) || "";
@@ -116,13 +179,18 @@ function formatFileSize(bytes) {
     .replace(".", ",")} МБ`;
 }
 
-function clearImagePreview() {
+function clearLocalImagePreview() {
   if (previewObjectUrl) {
     URL.revokeObjectURL(previewObjectUrl);
     previewObjectUrl = null;
   }
 
   imageInput.value = "";
+}
+
+function clearImagePreview() {
+  clearLocalImagePreview();
+  importedImageSourceUrl = null;
   imagePreview.removeAttribute("src");
   imageFileInfo.textContent = "";
   imagePreviewCard.hidden = true;
@@ -174,6 +242,20 @@ function showImagePreview(file) {
   imageFileInfo.textContent =
     `${file.name} · ${formatFileSize(file.size)}`;
 
+  imagePreviewCard.hidden = false;
+}
+
+function showImportedImagePreview(url) {
+  clearImagePreview();
+
+  if (!url) {
+    return;
+  }
+
+  importedImageSourceUrl = url;
+  imagePreview.src = url;
+  imageFileInfo.textContent =
+    "Фотография найдена на странице-источнике. При сохранении она будет скопирована в R2.";
   imagePreviewCard.hidden = false;
 }
 
@@ -415,20 +497,42 @@ function normalizeComparison(value) {
     .replace(/\s+/g, " ");
 }
 
+function getField(name) {
+  return recipeForm.elements.namedItem(name);
+}
+
 function getFieldValue(name) {
-  const field =
-    recipeForm.elements.namedItem(name);
+  const field = getField(name);
 
   return field
     ? String(field.value || "").trim()
     : "";
 }
 
-function getCheckboxValue(name) {
-  const field =
-    recipeForm.elements.namedItem(name);
+function setFieldValue(name, value) {
+  const field = getField(name);
 
+  if (!field) {
+    return;
+  }
+
+  field.value =
+    value === null || value === undefined
+      ? ""
+      : String(value);
+}
+
+function getCheckboxValue(name) {
+  const field = getField(name);
   return Boolean(field?.checked);
+}
+
+function setCheckboxValue(name, value) {
+  const field = getField(name);
+
+  if (field) {
+    field.checked = Boolean(value);
+  }
 }
 
 function getSelectedImageFile() {
@@ -478,6 +582,9 @@ function buildPayload() {
     totalMinutes,
 
     imageKey: null,
+
+    imageSourceUrl:
+      importedImageSourceUrl || null,
 
     imageCredit:
       getFieldValue("imageCredit") || null,
@@ -673,6 +780,59 @@ async function uploadImage(file, title, key) {
   return data.item;
 }
 
+async function importImageToR2(
+  imageUrl,
+  title,
+  sourceUrl,
+  key
+) {
+  const response = await fetch(
+    `${IMPORTER_ORIGIN}/api/import/image`,
+    {
+      method: "POST",
+
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`,
+      },
+
+      body: JSON.stringify({
+        url: imageUrl,
+        title,
+        sourceUrl,
+      }),
+    }
+  );
+
+  const data = await response
+    .json()
+    .catch(() => null);
+
+  if (response.status === 401) {
+    removeKey();
+    showLogin();
+
+    throw new Error(
+      "Ключ импортёра не подошёл. Проверьте ADMIN_API_KEY у recepty-importer."
+    );
+  }
+
+  if (
+    !response.ok ||
+    !data?.success ||
+    !data?.item?.imageKey
+  ) {
+    throw new Error(
+      data?.message ||
+      data?.error ||
+      "Не удалось сохранить найденную фотографию. Уберите её и попробуйте сохранить рецепт без изображения."
+    );
+  }
+
+  return data.item;
+}
+
 function showDuplicate(existing) {
   saveStatus.replaceChildren();
   saveStatus.className =
@@ -722,6 +882,382 @@ function showSavedRecipe(item) {
   });
 }
 
+function clearImportPreview() {
+  currentImport = null;
+  importPreview.hidden = true;
+  importPreviewImageWrap.hidden = true;
+  importPreviewImage.removeAttribute("src");
+  importPreviewTitle.textContent = "Рецепт";
+  importPreviewDescription.textContent = "";
+  importPreviewDescription.hidden = true;
+  importPreviewSource.textContent = "";
+  importPreviewMeta.replaceChildren();
+  importPreviewWarnings.replaceChildren();
+  importPreviewWarnings.hidden = true;
+  importPreviewIngredients.replaceChildren();
+  importPreviewSteps.replaceChildren();
+  importImageChoice.hidden = true;
+  importImageCheckbox.checked = true;
+}
+
+function createMetaChip(text) {
+  const chip = document.createElement("span");
+  chip.textContent = text;
+  return chip;
+}
+
+function ingredientDisplayText(ingredient) {
+  if (typeof ingredient === "string") {
+    return ingredient;
+  }
+
+  return (
+    ingredient?.rawText ||
+    ingredient?.raw_text ||
+    ingredient?.name ||
+    "Ингредиент"
+  );
+}
+
+function renderImportPreview(item, extraWarnings = []) {
+  currentImport = {
+    title: item?.title || "",
+    description: item?.description || null,
+    category: item?.category || "Без категории",
+    tags: Array.isArray(item?.tags) ? item.tags : [],
+    servings: item?.servings ?? null,
+    servingsText: item?.servingsText ?? null,
+    prepMinutes: item?.prepMinutes ?? null,
+    cookMinutes: item?.cookMinutes ?? null,
+    totalMinutes: item?.totalMinutes ?? null,
+    imageSourceUrl: item?.imageSourceUrl || null,
+    sourceName: item?.sourceName || null,
+    sourceUrl: item?.sourceUrl || importUrlInput.value.trim(),
+    ingredients: Array.isArray(item?.ingredients) ? item.ingredients : [],
+    steps: Array.isArray(item?.steps) ? item.steps : [],
+    tips: item?.tips || null,
+    serveWith: item?.serveWith || null,
+    highlight: item?.highlight || null,
+    batchTip: item?.batchTip || null,
+    notes: item?.notes || null,
+    isVerified: Boolean(item?.isVerified),
+    isFavorite: Boolean(item?.isFavorite),
+    isWeeklyPrep: Boolean(item?.isWeeklyPrep),
+    warnings: [
+      ...(Array.isArray(item?.warnings) ? item.warnings : []),
+      ...extraWarnings,
+    ].filter(Boolean),
+  };
+
+  importPreviewTitle.textContent =
+    currentImport.title || "Название не найдено";
+
+  if (currentImport.description) {
+    importPreviewDescription.textContent =
+      currentImport.description;
+    importPreviewDescription.hidden = false;
+  } else {
+    importPreviewDescription.textContent = "";
+    importPreviewDescription.hidden = true;
+  }
+
+  importPreviewSource.textContent =
+    currentImport.sourceUrl || "";
+
+  importPreviewMeta.replaceChildren();
+
+  const metaValues = [];
+
+  if (currentImport.category) {
+    metaValues.push(currentImport.category);
+  }
+
+  if (currentImport.servingsText) {
+    metaValues.push(currentImport.servingsText);
+  } else if (currentImport.servings !== null) {
+    metaValues.push(`${currentImport.servings} порций`);
+  }
+
+  if (currentImport.totalMinutes !== null) {
+    metaValues.push(`${currentImport.totalMinutes} мин`);
+  }
+
+  for (const metaValue of metaValues) {
+    importPreviewMeta.append(
+      createMetaChip(metaValue)
+    );
+  }
+
+  if (currentImport.imageSourceUrl) {
+    importPreviewImage.src =
+      currentImport.imageSourceUrl;
+    importPreviewImageWrap.hidden = false;
+    importImageChoice.hidden = false;
+    importImageCheckbox.checked = true;
+  } else {
+    importPreviewImage.removeAttribute("src");
+    importPreviewImageWrap.hidden = true;
+    importImageChoice.hidden = true;
+    importImageCheckbox.checked = false;
+  }
+
+  importPreviewWarnings.replaceChildren();
+
+  if (currentImport.warnings.length) {
+    for (const warning of currentImport.warnings) {
+      const itemElement = document.createElement("li");
+      itemElement.textContent = warning;
+      importPreviewWarnings.append(itemElement);
+    }
+
+    importPreviewWarnings.hidden = false;
+  } else {
+    importPreviewWarnings.hidden = true;
+  }
+
+  importPreviewIngredients.replaceChildren();
+
+  for (const ingredient of currentImport.ingredients) {
+    const itemElement = document.createElement("li");
+    itemElement.textContent = ingredientDisplayText(ingredient);
+    importPreviewIngredients.append(itemElement);
+  }
+
+  if (!currentImport.ingredients.length) {
+    const itemElement = document.createElement("li");
+    itemElement.textContent = "Ингредиенты не найдены.";
+    importPreviewIngredients.append(itemElement);
+  }
+
+  importIngredientsHeading.textContent =
+    `Ингредиенты (${currentImport.ingredients.length})`;
+
+  importPreviewSteps.replaceChildren();
+
+  for (const step of currentImport.steps) {
+    const itemElement = document.createElement("li");
+    itemElement.textContent =
+      typeof step === "string"
+        ? step
+        : step?.instruction || step?.text || "Шаг";
+    importPreviewSteps.append(itemElement);
+  }
+
+  if (!currentImport.steps.length) {
+    const itemElement = document.createElement("li");
+    itemElement.textContent = "Шаги приготовления не найдены.";
+    importPreviewSteps.append(itemElement);
+  }
+
+  importStepsHeading.textContent =
+    `Приготовление (${currentImport.steps.length})`;
+
+  importPreview.hidden = false;
+  importPreview.scrollIntoView({
+    behavior: "smooth",
+    block: "start",
+  });
+}
+
+function formatStructuredLines(items, type) {
+  if (!Array.isArray(items)) {
+    return "";
+  }
+
+  const lines = [];
+  let currentSection = undefined;
+  let visibleStepNumber = 0;
+
+  for (const item of items) {
+    const section =
+      typeof item === "object" && item !== null
+        ? item.section || null
+        : null;
+
+    if (section !== currentSection) {
+      if (currentSection !== undefined) {
+        lines.push("");
+      }
+
+      if (section) {
+        lines.push(`[${section}]`);
+      } else if (currentSection) {
+        lines.push("[]");
+      }
+
+      currentSection = section;
+    }
+
+    if (type === "ingredients") {
+      lines.push(ingredientDisplayText(item));
+      continue;
+    }
+
+    const instruction =
+      typeof item === "string"
+        ? item
+        : item?.instruction || item?.text || "";
+
+    if (!instruction) {
+      continue;
+    }
+
+    if (section) {
+      lines.push(instruction);
+    } else {
+      visibleStepNumber += 1;
+      lines.push(`${visibleStepNumber}. ${instruction}`);
+    }
+  }
+
+  return lines.join("\n").trim();
+}
+
+function formHasRecipeContent() {
+  return Boolean(
+    getFieldValue("title") ||
+    getFieldValue("ingredients") ||
+    getFieldValue("steps")
+  );
+}
+
+function applyImportedRecipe() {
+  if (!currentImport) {
+    return;
+  }
+
+  if (formHasRecipeContent()) {
+    const confirmed = window.confirm(
+      "В форме уже есть данные. Заменить их найденным рецептом?"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+  }
+
+  recipeForm.reset();
+  clearImagePreview();
+  hideStatus(saveStatus);
+
+  setFieldValue("title", currentImport.title);
+  setFieldValue("description", currentImport.description);
+  setFieldValue("category", currentImport.category || "Без категории");
+  setFieldValue("tags", currentImport.tags.join(", "));
+  setFieldValue("servings", currentImport.servings);
+  setFieldValue("servingsText", currentImport.servingsText);
+  setFieldValue("prepMinutes", currentImport.prepMinutes);
+  setFieldValue("cookMinutes", currentImport.cookMinutes);
+  setFieldValue("totalMinutes", currentImport.totalMinutes);
+  setFieldValue("sourceName", currentImport.sourceName || "Рецепт от Пети");
+  setFieldValue("sourceUrl", currentImport.sourceUrl);
+  setFieldValue(
+    "imageCredit",
+    currentImport.imageSourceUrl
+      ? "Фотография со страницы-источника"
+      : ""
+  );
+  setFieldValue(
+    "ingredients",
+    formatStructuredLines(
+      currentImport.ingredients,
+      "ingredients"
+    )
+  );
+  setFieldValue(
+    "steps",
+    formatStructuredLines(
+      currentImport.steps,
+      "steps"
+    )
+  );
+  setFieldValue("tips", currentImport.tips);
+  setFieldValue("serveWith", currentImport.serveWith);
+  setFieldValue("highlight", currentImport.highlight);
+  setFieldValue("batchTip", currentImport.batchTip);
+  setFieldValue("notes", currentImport.notes);
+
+  setCheckboxValue("isVerified", currentImport.isVerified);
+  setCheckboxValue("isFavorite", currentImport.isFavorite);
+  setCheckboxValue("isWeeklyPrep", false);
+
+  if (
+    currentImport.imageSourceUrl &&
+    importImageCheckbox.checked
+  ) {
+    showImportedImagePreview(
+      currentImport.imageSourceUrl
+    );
+  }
+
+  setStatus(
+    saveStatus,
+    "Данные перенесены в форму. Проверьте название, ингредиенты, шаги и метки. Рецепт ещё не сохранён.",
+    "success"
+  );
+
+  recipeForm.scrollIntoView({
+    behavior: "smooth",
+    block: "start",
+  });
+}
+
+async function requestImportPreview(url, key) {
+  const response = await fetch(
+    `${IMPORTER_ORIGIN}/api/import/preview`,
+    {
+      method: "POST",
+
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`,
+      },
+
+      body: JSON.stringify({ url }),
+    }
+  );
+
+  const data = await response
+    .json()
+    .catch(() => null);
+
+  if (response.status === 401) {
+    throw new Error(
+      "Ключ импортёра не подошёл. Проверьте ADMIN_API_KEY у recepty-importer."
+    );
+  }
+
+  if (response.status === 422 && data?.partial) {
+    renderImportPreview(
+      {
+        ...data.partial,
+        ingredients: [],
+        steps: [],
+        category: "Без категории",
+        tags: [],
+        sourceName: null,
+      },
+      [
+        data.message ||
+        "Автоматически найдено только часть данных. Ингредиенты и шаги нужно заполнить вручную.",
+      ]
+    );
+
+    return;
+  }
+
+  if (!response.ok || !data?.success || !data?.item) {
+    throw new Error(
+      data?.message ||
+      data?.error ||
+      "Не удалось получить рецепт по ссылке."
+    );
+  }
+
+  renderImportPreview(data.item);
+}
+
 imageInput.addEventListener(
   "change",
   () => {
@@ -740,6 +1276,75 @@ imageInput.addEventListener(
 removeImageButton.addEventListener(
   "click",
   clearImagePreview
+);
+
+importForm.addEventListener(
+  "submit",
+  async (event) => {
+    event.preventDefault();
+    hideStatus(importStatus);
+    clearImportPreview();
+
+    const key = getStoredKey();
+    const url = importUrlInput.value.trim();
+
+    if (!key) {
+      showLogin();
+      return;
+    }
+
+    if (!url) {
+      setStatus(
+        importStatus,
+        "Вставьте ссылку на рецепт.",
+        "error"
+      );
+      return;
+    }
+
+    importButton.disabled = true;
+    importButton.textContent = "Получаем…";
+
+    setStatus(
+      importStatus,
+      "Открываем страницу и ищем рецепт…"
+    );
+
+    try {
+      await requestImportPreview(url, key);
+      setStatus(
+        importStatus,
+        "Рецепт найден. Проверьте предварительную карточку ниже.",
+        "success"
+      );
+    } catch (error) {
+      setStatus(
+        importStatus,
+        error instanceof Error
+          ? error.message
+          : "Импорт завершился с ошибкой.",
+        "error"
+      );
+    } finally {
+      importButton.disabled = false;
+      importButton.textContent = "Получить рецепт";
+    }
+  }
+);
+
+applyImportButton.addEventListener(
+  "click",
+  applyImportedRecipe
+);
+
+cancelImportButton.addEventListener(
+  "click",
+  () => {
+    clearImportPreview();
+    hideStatus(importStatus);
+    importUrlInput.value = "";
+    importUrlInput.focus();
+  }
 );
 
 loginForm.addEventListener(
@@ -798,8 +1403,11 @@ logoutButton.addEventListener(
   () => {
     removeKey();
     recipeForm.reset();
+    importForm.reset();
     clearImagePreview();
+    clearImportPreview();
     hideStatus(saveStatus);
+    hideStatus(importStatus);
     showLogin();
   }
 );
@@ -818,6 +1426,8 @@ resetButton.addEventListener(
     recipeForm.reset();
     clearImagePreview();
     hideStatus(saveStatus);
+
+    setFieldValue("sourceName", "Рецепт от Пети");
 
     document
       .querySelector("#title")
@@ -891,6 +1501,27 @@ recipeForm.addEventListener(
 
         payload.imageKey =
           uploadedImage.imageKey;
+
+        payload.imageSourceUrl = null;
+      } else if (importedImageSourceUrl) {
+        saveButton.textContent =
+          "Сохраняем фотографию…";
+
+        setStatus(
+          saveStatus,
+          "Копируем найденную фотографию в ваше R2-хранилище…"
+        );
+
+        const importedImage =
+          await importImageToR2(
+            importedImageSourceUrl,
+            payload.title,
+            payload.sourceUrl,
+            key
+          );
+
+        payload.imageKey =
+          importedImage.imageKey;
       }
 
       saveButton.textContent =
