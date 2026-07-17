@@ -254,6 +254,446 @@ async function fetchWithRedirects(initialUrl, options = {}) {
   throw new Error("Не удалось получить страницу.");
 }
 
+function normalizeCharsetLabel(value) {
+  const label = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^['"]|['"]$/g, "");
+
+  if (!label) {
+    return null;
+  }
+
+  if (["utf8", "utf-8", "unicode-1-1-utf-8"].includes(label)) {
+    return "utf-8";
+  }
+
+  if (
+    [
+      "windows-1251",
+      "cp1251",
+      "cp-1251",
+      "win-1251",
+      "win1251",
+      "x-cp1251",
+      "1251",
+    ].includes(label)
+  ) {
+    return "windows-1251";
+  }
+
+  if (["koi8-r", "koi8r", "cskoi8r"].includes(label)) {
+    return "koi8-r";
+  }
+
+  if (["iso-8859-1", "latin1", "latin-1"].includes(label)) {
+    return "windows-1252";
+  }
+
+  return label;
+}
+
+function charsetFromContentType(contentType) {
+  const match = String(contentType ?? "").match(
+    /charset\s*=\s*(?:["']\s*)?([^;\s"']+)/i
+  );
+
+  return normalizeCharsetLabel(match?.[1]);
+}
+
+function charsetFromHtmlPrefix(bytes) {
+  const prefix = new TextDecoder("utf-8", { fatal: false }).decode(
+    bytes.slice(0, Math.min(bytes.byteLength, 16384))
+  );
+
+  const directMatch = prefix.match(
+    /<meta\b[^>]*charset\s*=\s*(?:["']\s*)?([^\s"'/>;]+)/i
+  );
+
+  if (directMatch) {
+    return normalizeCharsetLabel(directMatch[1]);
+  }
+
+  const httpEquivMatch = prefix.match(
+    /<meta\b[^>]*content\s*=\s*(?:"[^"]*charset\s*=\s*([^;\s"']+)[^"]*"|'[^']*charset\s*=\s*([^;\s"']+)[^']*')[^>]*>/i
+  );
+
+  return normalizeCharsetLabel(httpEquivMatch?.[1] || httpEquivMatch?.[2]);
+}
+
+function decodeWindows1251(bytes) {
+  const special = [
+    "Ђ", "Ѓ", "‚", "ѓ", "„", "…", "†", "‡",
+    "€", "‰", "Љ", "‹", "Њ", "Ќ", "Ћ", "Џ",
+    "ђ", "‘", "’", "“", "”", "•", "–", "—",
+    " ", "™", "љ", "›", "њ", "ќ", "ћ", "џ",
+    "\u00a0", "Ў", "ў", "Ј", "¤", "Ґ", "¦", "§",
+    "Ё", "©", "Є", "«", "¬", "\u00ad", "®", "Ї",
+    "°", "±", "І", "і", "ґ", "µ", "¶", "·",
+    "ё", "№", "є", "»", "ј", "Ѕ", "ѕ", "ї",
+  ];
+
+  let result = "";
+
+  for (const byte of bytes) {
+    if (byte < 0x80) {
+      result += String.fromCharCode(byte);
+      continue;
+    }
+
+    if (byte < 0xc0) {
+      result += special[byte - 0x80] || " ";
+      continue;
+    }
+
+    result += String.fromCharCode(
+      byte < 0xe0
+        ? 0x0410 + (byte - 0xc0)
+        : 0x0430 + (byte - 0xe0)
+    );
+  }
+
+  return result;
+}
+
+function decodeHtmlBytes(bytes, contentType, finalUrl) {
+  const pageHost = new URL(finalUrl).hostname.toLowerCase();
+  const declaredCharset =
+    charsetFromContentType(contentType) ||
+    charsetFromHtmlPrefix(bytes) ||
+    (pageHost === "russianfood.com" || pageHost.endsWith(".russianfood.com")
+      ? "windows-1251"
+      : "utf-8");
+
+  if (declaredCharset === "windows-1251") {
+    return decodeWindows1251(bytes);
+  }
+
+  try {
+    return new TextDecoder(declaredCharset, { fatal: false }).decode(bytes);
+  } catch {
+    return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+  }
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractTagBlocksByClassFragment(html, tagName, classFragment) {
+  const escapedTag = escapeRegExp(tagName);
+  const escapedFragment = escapeRegExp(classFragment);
+  const pattern = new RegExp(
+    `<${escapedTag}\\b[^>]*class\\s*=\\s*(["'])[^"']*${escapedFragment}[^"']*\\1[^>]*>([\\s\\S]*?)<\\/${escapedTag}>`,
+    "gi"
+  );
+  const blocks = [];
+  let match;
+
+  while ((match = pattern.exec(html)) !== null) {
+    blocks.push(match[2]);
+  }
+
+  return blocks;
+}
+
+function uniqueCleanTexts(values, limit = 250) {
+  const result = [];
+  const used = new Set();
+
+  for (const value of values) {
+    const text = cleanText(value);
+    const comparisonKey = normalizeForComparison(text);
+
+    if (!text || !comparisonKey || used.has(comparisonKey)) {
+      continue;
+    }
+
+    used.add(comparisonKey);
+    result.push(text);
+
+    if (result.length >= limit) {
+      break;
+    }
+  }
+
+  return result;
+}
+
+function ingredientObjectsFromLines(lines) {
+  return uniqueCleanTexts(lines)
+    .filter((line) => !/^(продукты|ингредиенты)\s*:??$/i.test(line))
+    .map((rawText, index) => ({
+      position: index + 1,
+      section: null,
+      name: rawText.split(/\s+[—–-]\s+/)[0]?.trim() || rawText,
+      amount: null,
+      amountMin: null,
+      amountMax: null,
+      unit: null,
+      rawText,
+    }));
+}
+
+function stepObjectsFromLines(lines) {
+  return uniqueCleanTexts(lines, 150)
+    .map((instruction) => instruction.replace(/^\d+[.)]\s*/, "").trim())
+    .filter(Boolean)
+    .map((instruction, index) => ({
+      position: index + 1,
+      section: null,
+      instruction,
+    }));
+}
+
+function minutesFromRussianDuration(value) {
+  const text = stringOrNull(value)?.split("(")[0].trim();
+
+  if (!text) {
+    return null;
+  }
+
+  const days = numberFromText(text.match(/\d+(?:[.,]\d+)?\s*(?:дн|день|дня|дней)/i)?.[0]) || 0;
+  const hours = numberFromText(text.match(/\d+(?:[.,]\d+)?\s*(?:ч(?:ас(?:а|ов)?)?)/i)?.[0]) || 0;
+  const minutes = numberFromText(text.match(/\d+(?:[.,]\d+)?\s*мин/i)?.[0]) || 0;
+
+  const total = days * 1440 + hours * 60 + minutes;
+  return total > 0 ? Math.round(total) : numberFromText(text);
+}
+
+function cleanRussianFoodTitle(value) {
+  return stringOrNull(value)
+    ?.replace(/^Рецепт:\s*/i, "")
+    .replace(/\s+на\s+RussianFood\.com.*$/i, "")
+    .trim() || null;
+}
+
+function extractRussianFoodSteps(html) {
+  const result = [];
+  const pattern = /<div\b[^>]*class\s*=\s*(["'])[^"']*\bstep_n\b[^"']*\1[^>]*>[\s\S]*?<p\b[^>]*>([\s\S]*?)<\/p>/gi;
+  let match;
+
+  while ((match = pattern.exec(html)) !== null) {
+    result.push(match[2]);
+  }
+
+  return result;
+}
+
+function parseRussianFoodRecipe(html, finalUrl) {
+  const pageUrl = new URL(finalUrl);
+
+  if (
+    pageUrl.hostname !== "russianfood.com" &&
+    !pageUrl.hostname.endsWith(".russianfood.com")
+  ) {
+    return null;
+  }
+
+  const ingredientRows = extractTagBlocksByClassFragment(
+    html,
+    "tr",
+    "ingr_tr_"
+  );
+
+  const instructionParagraphs = extractRussianFoodSteps(html);
+  const ingredients = ingredientObjectsFromLines(ingredientRows);
+  const steps = stepObjectsFromLines(instructionParagraphs);
+
+  const infoValues = uniqueCleanTexts(
+    extractTagBlocksByClassFragment(html, "div", "el"),
+    30
+  );
+
+  const servingsText =
+    infoValues.find((value) => /порц/i.test(value)) || null;
+
+  const durationText =
+    infoValues.find((value) => /(?:мин|час|дн)/i.test(value)) || null;
+
+  const title = cleanRussianFoodTitle(extractTitle(html));
+  const description = extractMeta(html, [
+    "og:description",
+    "description",
+    "twitter:description",
+  ]);
+
+  const imageSourceUrl = resolveUrl(
+    extractMeta(html, ["og:image", "twitter:image"]),
+    finalUrl
+  );
+
+  if (!title && !ingredients.length && !steps.length) {
+    return null;
+  }
+
+  const warnings = [];
+
+  if (!ingredients.length) {
+    warnings.push("Не удалось извлечь ингредиенты — заполните их вручную.");
+  }
+
+  if (!steps.length) {
+    warnings.push("Не удалось извлечь приготовление — заполните шаги вручную.");
+  }
+
+  if (!imageSourceUrl) {
+    warnings.push("На странице не найдена подходящая фотография.");
+  }
+
+  return {
+    title: title || "",
+    description: description || null,
+    category: "Без категории",
+    tags: [],
+    servings: numberFromText(servingsText),
+    servingsText,
+    prepMinutes: null,
+    cookMinutes: null,
+    totalMinutes: minutesFromRussianDuration(durationText),
+    imageSourceUrl,
+    sourceName: "RussianFood.com",
+    sourceUrl: finalUrl,
+    ingredients,
+    steps,
+    tips: null,
+    serveWith: null,
+    highlight: null,
+    batchTip: null,
+    notes: null,
+    nutritionBasis: null,
+    caloriesKcal: null,
+    proteinG: null,
+    fatG: null,
+    carbsG: null,
+    isVerified: false,
+    isFavorite: false,
+    isWeeklyPrep: false,
+    warnings,
+  };
+}
+
+function extractItempropTexts(html, acceptedProperties) {
+  const accepted = new Set(
+    acceptedProperties.map((value) => value.toLowerCase())
+  );
+  const values = [];
+  const pairedPattern = /<([a-z0-9]+)\b([^>]*\bitemprop\s*=\s*(?:"[^"]+"|'[^']+'|[^\s>]+)[^>]*)>([\s\S]*?)<\/\1>/gi;
+  let match;
+
+  while ((match = pairedPattern.exec(html)) !== null) {
+    const attributes = parseAttributes(`<${match[1]} ${match[2]}>`);
+    const properties = String(attributes.itemprop || "")
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    if (properties.some((property) => accepted.has(property))) {
+      values.push(attributes.content || match[3]);
+    }
+  }
+
+  const singlePattern = /<(?:meta|link|img)\b[^>]*\bitemprop\s*=\s*(?:"[^"]+"|'[^']+'|[^\s>]+)[^>]*>/gi;
+
+  while ((match = singlePattern.exec(html)) !== null) {
+    const attributes = parseAttributes(match[0]);
+    const properties = String(attributes.itemprop || "")
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    if (properties.some((property) => accepted.has(property))) {
+      values.push(attributes.content || attributes.href || attributes.src || "");
+    }
+  }
+
+  return uniqueCleanTexts(values);
+}
+
+function parseMicrodataRecipe(html, finalUrl) {
+  const ingredientLines = extractItempropTexts(html, [
+    "recipeingredient",
+    "ingredients",
+  ]);
+
+  const instructionLines = extractItempropTexts(html, [
+    "recipeinstructions",
+  ]).flatMap((value) =>
+    value
+      .split(/\n+|(?=\d+[.)]\s+)/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+  );
+
+  if (!ingredientLines.length && !instructionLines.length) {
+    return null;
+  }
+
+  const title =
+    extractItempropTexts(html, ["name"])[0] ||
+    extractTitle(html) ||
+    "";
+
+  const imageCandidate =
+    extractItempropTexts(html, ["image"])[0] ||
+    extractMeta(html, ["og:image", "twitter:image"]);
+
+  const servingsText =
+    extractItempropTexts(html, ["recipeyield"])[0] || null;
+
+  const totalTimeText =
+    extractItempropTexts(html, ["totaltime"])[0] || null;
+
+  const warnings = [];
+  const ingredients = ingredientObjectsFromLines(ingredientLines);
+  const steps = stepObjectsFromLines(instructionLines);
+
+  if (!ingredients.length) {
+    warnings.push("Не удалось извлечь ингредиенты — заполните их вручную.");
+  }
+
+  if (!steps.length) {
+    warnings.push("Не удалось извлечь приготовление — заполните шаги вручную.");
+  }
+
+  return {
+    title: title || "",
+    description: extractMeta(html, [
+      "og:description",
+      "description",
+      "twitter:description",
+    ]),
+    category: "Без категории",
+    tags: [],
+    servings: numberFromText(servingsText),
+    servingsText,
+    prepMinutes: null,
+    cookMinutes: null,
+    totalMinutes:
+      durationToMinutes(totalTimeText) ??
+      minutesFromRussianDuration(totalTimeText),
+    imageSourceUrl: resolveUrl(imageCandidate, finalUrl),
+    sourceName: new URL(finalUrl).hostname.replace(/^www\./, ""),
+    sourceUrl: finalUrl,
+    ingredients,
+    steps,
+    tips: null,
+    serveWith: null,
+    highlight: null,
+    batchTip: null,
+    notes: null,
+    nutritionBasis: null,
+    caloriesKcal: null,
+    proteinG: null,
+    fatG: null,
+    carbsG: null,
+    isVerified: false,
+    isFavorite: false,
+    isWeeklyPrep: false,
+    warnings,
+  };
+}
+
 function parseAttributes(tag) {
   const attributes = {};
   const pattern = /([:\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g;
@@ -798,9 +1238,9 @@ async function previewImport(request, env) {
     );
   }
 
-  const html = await response.text();
+  const htmlBuffer = await response.arrayBuffer();
 
-  if (textEncoder.encode(html).byteLength > MAX_HTML_BYTES) {
+  if (htmlBuffer.byteLength > MAX_HTML_BYTES) {
     return jsonResponse(
       {
         success: false,
@@ -811,16 +1251,24 @@ async function previewImport(request, env) {
     );
   }
 
+  const htmlBytes = new Uint8Array(htmlBuffer);
+  const html = decodeHtmlBytes(htmlBytes, contentType, finalUrl);
+
   const jsonLdValues = parseJsonLdBlocks(extractJsonLdBlocks(html));
   const recipeNode = findRecipeNode(jsonLdValues);
 
-  if (!recipeNode) {
+  const recipe = recipeNode
+    ? parseRecipe(recipeNode, html, finalUrl)
+    : parseRussianFoodRecipe(html, finalUrl) ||
+      parseMicrodataRecipe(html, finalUrl);
+
+  if (!recipe) {
     return jsonResponse(
       {
         success: false,
         error: "Recipe markup not found",
         message:
-          "На странице не найден структурированный блок Recipe. Этот сайт пока нельзя импортировать автоматически — вставьте рецепт вручную.",
+          "На странице не удалось распознать ингредиенты и шаги. Перенесите найденные данные в форму и заполните рецепт вручную.",
         partial: {
           title: extractTitle(html),
           description: extractMeta(html, ["og:description", "description", "twitter:description"]),
@@ -834,8 +1282,6 @@ async function previewImport(request, env) {
       422
     );
   }
-
-  const recipe = parseRecipe(recipeNode, html, finalUrl);
 
   return jsonResponse({
     success: true,
