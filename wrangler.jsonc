@@ -26,5 +26,12 @@
       "database_name": "recepty-db",
       "database_id": "8dcf207c-0709-4129-b262-5c5bc5753e56"
     }
+  ],
+
+  "r2_buckets": [
+    {
+      "binding": "IMAGES",
+      "bucket_name": "recepty-images"
+    }
   ]
 }
