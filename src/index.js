@@ -1,5 +1,13 @@
 const textEncoder = new TextEncoder();
 
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+
+const ALLOWED_IMAGE_TYPES = new Map([
+  ["image/jpeg", "jpg"],
+  ["image/png", "png"],
+  ["image/webp", "webp"],
+]);
+
 function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
@@ -130,7 +138,9 @@ function normalizeHttpUrl(value) {
     const url = new URL(text);
 
     if (!["http:", "https:"].includes(url.protocol)) {
-      throw new Error("Допустимы только ссылки http и https.");
+      throw new Error(
+        "Допустимы только ссылки http и https."
+      );
     }
 
     return url.href;
@@ -160,7 +170,8 @@ function normalizeNamedList(values) {
       continue;
     }
 
-    const comparisonKey = normalizeForComparison(name);
+    const comparisonKey =
+      normalizeForComparison(name);
 
     if (used.has(comparisonKey)) {
       continue;
@@ -184,13 +195,19 @@ function composeIngredientText(ingredient) {
 
   let quantity = "";
 
-  if (amountMin !== null && amountMax !== null) {
+  if (
+    amountMin !== null &&
+    amountMax !== null
+  ) {
     quantity = `${amountMin}–${amountMax}`;
   } else if (amount !== null) {
     quantity = String(amount);
   }
 
-  const quantityWithUnit = [quantity, unit]
+  const quantityWithUnit = [
+    quantity,
+    unit,
+  ]
     .filter(Boolean)
     .join(" ");
 
@@ -214,8 +231,9 @@ function normalizeIngredients(values) {
           position: index + 1,
           section: null,
           name:
-            rawText.split(/\s+[—–-]\s+/)[0]?.trim() ||
-            rawText,
+            rawText
+              .split(/\s+[—–-]\s+/)[0]
+              ?.trim() || rawText,
           amount: null,
           amountMin: null,
           amountMax: null,
@@ -224,7 +242,10 @@ function normalizeIngredients(values) {
         };
       }
 
-      if (!item || typeof item !== "object") {
+      if (
+        !item ||
+        typeof item !== "object"
+      ) {
         return null;
       }
 
@@ -245,35 +266,45 @@ function normalizeIngredients(values) {
 
       const ingredient = {
         position:
-          integerOrNull(item.position) || index + 1,
+          integerOrNull(item.position) ||
+          index + 1,
 
-        section: stringOrNull(item.section),
+        section:
+          stringOrNull(item.section),
 
         name,
 
-        amount: numberOrNull(item.amount),
+        amount:
+          numberOrNull(item.amount),
 
-        amountMin: numberOrNull(
-          item.amountMin ?? item.amount_min
-        ),
+        amountMin:
+          numberOrNull(
+            item.amountMin ??
+            item.amount_min
+          ),
 
-        amountMax: numberOrNull(
-          item.amountMax ?? item.amount_max
-        ),
+        amountMax:
+          numberOrNull(
+            item.amountMax ??
+            item.amount_max
+          ),
 
-        unit: stringOrNull(item.unit),
+        unit:
+          stringOrNull(item.unit),
 
         rawText: "",
       };
 
       ingredient.rawText =
-        rawText || composeIngredientText(ingredient);
+        rawText ||
+        composeIngredientText(ingredient);
 
       return ingredient;
     })
     .filter(Boolean)
-    .sort((first, second) =>
-      first.position - second.position
+    .sort(
+      (first, second) =>
+        first.position - second.position
     );
 }
 
@@ -299,7 +330,10 @@ function normalizeSteps(values) {
         };
       }
 
-      if (!item || typeof item !== "object") {
+      if (
+        !item ||
+        typeof item !== "object"
+      ) {
         return null;
       }
 
@@ -313,32 +347,40 @@ function normalizeSteps(values) {
 
       return {
         position:
-          integerOrNull(item.position) || index + 1,
+          integerOrNull(item.position) ||
+          index + 1,
 
-        section: stringOrNull(item.section),
+        section:
+          stringOrNull(item.section),
 
         instruction,
       };
     })
     .filter(Boolean)
-    .sort((first, second) =>
-      first.position - second.position
+    .sort(
+      (first, second) =>
+        first.position - second.position
     );
 }
 
-async function secureCompare(provided, expected) {
-  const [providedHash, expectedHash] =
-    await Promise.all([
-      crypto.subtle.digest(
-        "SHA-256",
-        textEncoder.encode(provided)
-      ),
+async function secureCompare(
+  provided,
+  expected
+) {
+  const [
+    providedHash,
+    expectedHash,
+  ] = await Promise.all([
+    crypto.subtle.digest(
+      "SHA-256",
+      textEncoder.encode(provided)
+    ),
 
-      crypto.subtle.digest(
-        "SHA-256",
-        textEncoder.encode(expected)
-      ),
-    ]);
+    crypto.subtle.digest(
+      "SHA-256",
+      textEncoder.encode(expected)
+    ),
+  ]);
 
   return crypto.subtle.timingSafeEqual(
     providedHash,
@@ -346,15 +388,21 @@ async function secureCompare(provided, expected) {
   );
 }
 
-async function isAuthorized(request, env) {
+async function isAuthorized(
+  request,
+  env
+) {
   if (!env.ADMIN_API_KEY) {
     return false;
   }
 
   const authorization =
-    request.headers.get("Authorization") || "";
+    request.headers.get("Authorization") ||
+    "";
 
-  if (!authorization.startsWith("Bearer ")) {
+  if (
+    !authorization.startsWith("Bearer ")
+  ) {
     return false;
   }
 
@@ -372,8 +420,12 @@ async function isAuthorized(request, env) {
   );
 }
 
-async function requireAuthorization(request, env) {
-  const authorized = await isAuthorized(request, env);
+async function requireAuthorization(
+  request,
+  env
+) {
+  const authorized =
+    await isAuthorized(request, env);
 
   if (authorized) {
     return null;
@@ -390,28 +442,349 @@ async function requireAuthorization(request, env) {
   );
 }
 
+function createImageKey(
+  title,
+  contentType
+) {
+  const extension =
+    ALLOWED_IMAGE_TYPES.get(contentType);
+
+  const baseName =
+    slugify(title) || "recipe";
+
+  const uniquePart =
+    crypto.randomUUID().slice(0, 12);
+
+  return (
+    `recipes/${baseName}-` +
+    `${uniquePart}.${extension}`
+  );
+}
+
+async function uploadImage(
+  request,
+  env,
+  url
+) {
+  const authorizationError =
+    await requireAuthorization(
+      request,
+      env
+    );
+
+  if (authorizationError) {
+    return authorizationError;
+  }
+
+  const contentType =
+    request.headers.get("Content-Type") ||
+    "";
+
+  if (
+    !contentType
+      .toLowerCase()
+      .startsWith("multipart/form-data")
+  ) {
+    return jsonResponse(
+      {
+        success: false,
+        error: "Invalid content type",
+        message:
+          "Фотография должна быть отправлена как multipart/form-data.",
+      },
+      415
+    );
+  }
+
+  let formData;
+
+  try {
+    formData =
+      await request.formData();
+  } catch {
+    return jsonResponse(
+      {
+        success: false,
+        error: "Invalid form data",
+        message:
+          "Не удалось прочитать загружаемый файл.",
+      },
+      400
+    );
+  }
+
+  const file =
+    formData.get("image");
+
+  if (!(file instanceof File)) {
+    return jsonResponse(
+      {
+        success: false,
+        error: "Image missing",
+        message:
+          "Выберите фотографию в поле с именем image.",
+      },
+      400
+    );
+  }
+
+  if (
+    !ALLOWED_IMAGE_TYPES.has(file.type)
+  ) {
+    return jsonResponse(
+      {
+        success: false,
+        error:
+          "Unsupported image type",
+        message:
+          "Поддерживаются только JPG, PNG и WebP.",
+      },
+      415
+    );
+  }
+
+  if (file.size <= 0) {
+    return jsonResponse(
+      {
+        success: false,
+        error: "Empty image",
+        message:
+          "Загруженный файл пуст.",
+      },
+      400
+    );
+  }
+
+  if (
+    file.size > MAX_IMAGE_BYTES
+  ) {
+    return jsonResponse(
+      {
+        success: false,
+        error: "Image too large",
+        message:
+          "Размер фотографии не должен превышать 8 МБ.",
+      },
+      413
+    );
+  }
+
+  const title =
+    stringOrNull(
+      formData.get("title")
+    ) ||
+    file.name.replace(/\.[^.]+$/, "") ||
+    "recipe";
+
+  const key =
+    createImageKey(title, file.type);
+
+  try {
+    await env.IMAGES.put(
+      key,
+      file.stream(),
+      {
+        httpMetadata: {
+          contentType: file.type,
+          cacheControl:
+            "public, max-age=31536000, immutable",
+        },
+
+        customMetadata: {
+          originalName:
+            file.name.slice(0, 200),
+
+          uploadedAt:
+            new Date().toISOString(),
+        },
+      }
+    );
+  } catch (error) {
+    console.error(
+      "Image upload failed:",
+      error
+    );
+
+    return jsonResponse(
+      {
+        success: false,
+        error: "Image upload failed",
+        message:
+          "Не удалось сохранить фотографию в хранилище.",
+
+        details:
+          error instanceof Error
+            ? error.message
+            : String(error),
+      },
+      500
+    );
+  }
+
+  const imagePath =
+    `/images/${key}`;
+
+  return jsonResponse(
+    {
+      success: true,
+      message:
+        "Фотография загружена.",
+
+      item: {
+        key,
+        imageKey: imagePath,
+
+        url: new URL(
+          imagePath,
+          url.origin
+        ).href,
+
+        contentType: file.type,
+        size: file.size,
+      },
+    },
+    201
+  );
+}
+
+async function serveImage(
+  request,
+  env,
+  url
+) {
+  const encodedKey =
+    url.pathname.slice(
+      "/images/".length
+    );
+
+  if (!encodedKey) {
+    return jsonResponse(
+      {
+        success: false,
+        error: "Image not found",
+      },
+      404
+    );
+  }
+
+  let key;
+
+  try {
+    key =
+      decodeURIComponent(encodedKey);
+  } catch {
+    return jsonResponse(
+      {
+        success: false,
+        error: "Invalid image path",
+      },
+      400
+    );
+  }
+
+  if (
+    key.length > 500 ||
+    key.includes("\0") ||
+    key.startsWith("/")
+  ) {
+    return jsonResponse(
+      {
+        success: false,
+        error: "Invalid image path",
+      },
+      400
+    );
+  }
+
+  const object =
+    await env.IMAGES.get(key);
+
+  if (!object) {
+    return jsonResponse(
+      {
+        success: false,
+        error: "Image not found",
+      },
+      404
+    );
+  }
+
+  const requestEtag =
+    request.headers.get("If-None-Match");
+
+  if (
+    requestEtag &&
+    requestEtag === object.httpEtag
+  ) {
+    return new Response(null, {
+      status: 304,
+      headers: {
+        ETag: object.httpEtag,
+      },
+    });
+  }
+
+  const headers = new Headers();
+
+  object.writeHttpMetadata(headers);
+
+  headers.set(
+    "ETag",
+    object.httpEtag
+  );
+
+  headers.set(
+    "X-Content-Type-Options",
+    "nosniff"
+  );
+
+  if (
+    !headers.has("Cache-Control")
+  ) {
+    headers.set(
+      "Cache-Control",
+      "public, max-age=31536000, immutable"
+    );
+  }
+
+  return new Response(
+    request.method === "HEAD"
+      ? null
+      : object.body,
+    {
+      status: 200,
+      headers,
+    }
+  );
+}
+
 async function createUniqueSlug(
   database,
   requestedSlug,
   title
 ) {
   const baseSlug =
-    slugify(requestedSlug || title) ||
-    `recipe-${crypto.randomUUID().slice(0, 8)}`;
+    slugify(
+      requestedSlug || title
+    ) ||
+    `recipe-${
+      crypto.randomUUID().slice(0, 8)
+    }`;
 
   let slug = baseSlug;
   let suffix = 2;
 
   while (true) {
-    const existing = await database
-      .prepare(`
-        SELECT id
-        FROM recipes
-        WHERE slug = ?
-        LIMIT 1
-      `)
-      .bind(slug)
-      .first();
+    const existing =
+      await database
+        .prepare(`
+          SELECT id
+          FROM recipes
+          WHERE slug = ?
+          LIMIT 1
+        `)
+        .bind(slug)
+        .first();
 
     if (!existing) {
       return slug;
@@ -421,9 +794,12 @@ async function createUniqueSlug(
     suffix += 1;
 
     if (suffix > 100) {
-      return `${baseSlug}-${crypto
-        .randomUUID()
-        .slice(0, 8)}`;
+      return (
+        `${baseSlug}-` +
+        crypto
+          .randomUUID()
+          .slice(0, 8)
+      );
     }
   }
 }
@@ -433,16 +809,19 @@ async function findDuplicateRecipe(
   title,
   sourceUrl
 ) {
-  const result = await database.prepare(`
-    SELECT
-      id,
-      slug,
-      title,
-      source_url
-    FROM recipes
-    WHERE deleted_at IS NULL
-    ORDER BY created_at DESC
-  `).all();
+  const result =
+    await database
+      .prepare(`
+        SELECT
+          id,
+          slug,
+          title,
+          source_url
+        FROM recipes
+        WHERE deleted_at IS NULL
+        ORDER BY created_at DESC
+      `)
+      .all();
 
   const normalizedTitle =
     normalizeForComparison(title);
@@ -450,8 +829,9 @@ async function findDuplicateRecipe(
   const duplicateByTitle =
     (result.results ?? []).find(
       (recipe) =>
-        normalizeForComparison(recipe.title) ===
-        normalizedTitle
+        normalizeForComparison(
+          recipe.title
+        ) === normalizedTitle
     );
 
   if (duplicateByTitle) {
@@ -462,7 +842,8 @@ async function findDuplicateRecipe(
     const duplicateBySource =
       (result.results ?? []).find(
         (recipe) =>
-          recipe.source_url === sourceUrl
+          recipe.source_url ===
+          sourceUrl
       );
 
     if (duplicateBySource) {
@@ -473,17 +854,25 @@ async function findDuplicateRecipe(
   return null;
 }
 
-async function searchRecipes(request, env, url) {
+async function searchRecipes(
+  request,
+  env,
+  url
+) {
   const authorizationError =
-    await requireAuthorization(request, env);
+    await requireAuthorization(
+      request,
+      env
+    );
 
   if (authorizationError) {
     return authorizationError;
   }
 
-  const query = normalizeForComparison(
-    url.searchParams.get("query")
-  );
+  const query =
+    normalizeForComparison(
+      url.searchParams.get("query")
+    );
 
   if (!query) {
     return jsonResponse({
@@ -492,37 +881,47 @@ async function searchRecipes(request, env, url) {
     });
   }
 
-  const result = await env.DB.prepare(`
-    SELECT
-      id,
-      slug,
-      title,
-      description,
-      source_url,
-      updated_at
-    FROM recipes
-    WHERE deleted_at IS NULL
-    ORDER BY title COLLATE NOCASE
-  `).all();
+  const result =
+    await env.DB
+      .prepare(`
+        SELECT
+          id,
+          slug,
+          title,
+          description,
+          source_url,
+          updated_at
+        FROM recipes
+        WHERE deleted_at IS NULL
+        ORDER BY title COLLATE NOCASE
+      `)
+      .all();
 
-  const items = (result.results ?? [])
-    .filter((recipe) => {
-      const searchableText =
-        normalizeForComparison([
-          recipe.title,
-          recipe.description,
-          recipe.source_url,
-        ].join(" "));
+  const items =
+    (result.results ?? [])
+      .filter((recipe) => {
+        const searchableText =
+          normalizeForComparison(
+            [
+              recipe.title,
+              recipe.description,
+              recipe.source_url,
+            ].join(" ")
+          );
 
-      return searchableText.includes(query);
-    })
-    .slice(0, 20)
-    .map((recipe) => ({
-      ...recipe,
-      url:
-        `${url.origin}/recipe?slug=` +
-        encodeURIComponent(recipe.slug),
-    }));
+        return searchableText
+          .includes(query);
+      })
+      .slice(0, 20)
+      .map((recipe) => ({
+        ...recipe,
+
+        url:
+          `${url.origin}/recipe?slug=` +
+          encodeURIComponent(
+            recipe.slug
+          ),
+      }));
 
   return jsonResponse({
     success: true,
@@ -530,19 +929,31 @@ async function searchRecipes(request, env, url) {
   });
 }
 
-async function createRecipe(request, env, url) {
+async function createRecipe(
+  request,
+  env,
+  url
+) {
   const authorizationError =
-    await requireAuthorization(request, env);
+    await requireAuthorization(
+      request,
+      env
+    );
 
   if (authorizationError) {
     return authorizationError;
   }
 
-  const contentLength = Number(
-    request.headers.get("Content-Length") || 0
-  );
+  const contentLength =
+    Number(
+      request.headers.get(
+        "Content-Length"
+      ) || 0
+    );
 
-  if (contentLength > 1_000_000) {
+  if (
+    contentLength > 1_000_000
+  ) {
     return jsonResponse(
       {
         success: false,
@@ -557,7 +968,8 @@ async function createRecipe(request, env, url) {
   let payload;
 
   try {
-    payload = await request.json();
+    payload =
+      await request.json();
   } catch {
     return jsonResponse(
       {
@@ -586,15 +998,18 @@ async function createRecipe(request, env, url) {
     );
   }
 
-  const title = stringOrNull(payload.title);
+  const title =
+    stringOrNull(payload.title);
 
   if (!title) {
     return jsonResponse(
       {
         success: false,
         error: "Validation failed",
+
         fields: {
-          title: "Укажите название рецепта.",
+          title:
+            "Укажите название рецепта.",
         },
       },
       400
@@ -606,6 +1021,7 @@ async function createRecipe(request, env, url) {
       {
         success: false,
         error: "Validation failed",
+
         fields: {
           title:
             "Название не должно превышать 200 символов.",
@@ -615,11 +1031,13 @@ async function createRecipe(request, env, url) {
     );
   }
 
-  const ingredients = normalizeIngredients(
-    payload.ingredients
-  );
+  const ingredients =
+    normalizeIngredients(
+      payload.ingredients
+    );
 
-  const steps = normalizeSteps(payload.steps);
+  const steps =
+    normalizeSteps(payload.steps);
 
   const validationFields = {};
 
@@ -633,7 +1051,10 @@ async function createRecipe(request, env, url) {
       "Добавьте хотя бы один шаг приготовления.";
   }
 
-  if (Object.keys(validationFields).length) {
+  if (
+    Object.keys(validationFields)
+      .length
+  ) {
     return jsonResponse(
       {
         success: false,
@@ -648,19 +1069,23 @@ async function createRecipe(request, env, url) {
   let imageSourceUrl;
 
   try {
-    sourceUrl = normalizeHttpUrl(
-      payload.sourceUrl ?? payload.source_url
-    );
+    sourceUrl =
+      normalizeHttpUrl(
+        payload.sourceUrl ??
+        payload.source_url
+      );
 
-    imageSourceUrl = normalizeHttpUrl(
-      payload.imageSourceUrl ??
-      payload.image_source_url
-    );
+    imageSourceUrl =
+      normalizeHttpUrl(
+        payload.imageSourceUrl ??
+        payload.image_source_url
+      );
   } catch (error) {
     return jsonResponse(
       {
         success: false,
         error: "Validation failed",
+
         message:
           error instanceof Error
             ? error.message
@@ -670,17 +1095,19 @@ async function createRecipe(request, env, url) {
     );
   }
 
-  const duplicate = await findDuplicateRecipe(
-    env.DB,
-    title,
-    sourceUrl
-  );
+  const duplicate =
+    await findDuplicateRecipe(
+      env.DB,
+      title,
+      sourceUrl
+    );
 
   if (duplicate) {
     return jsonResponse(
       {
         success: false,
         error: "Duplicate recipe",
+
         message:
           "В книге уже есть рецепт с таким названием или источником.",
 
@@ -688,54 +1115,78 @@ async function createRecipe(request, env, url) {
           id: duplicate.id,
           title: duplicate.title,
           slug: duplicate.slug,
+
           url:
             `${url.origin}/recipe?slug=` +
-            encodeURIComponent(duplicate.slug),
+            encodeURIComponent(
+              duplicate.slug
+            ),
         },
       },
       409
     );
   }
 
-  const id = crypto.randomUUID();
+  const id =
+    crypto.randomUUID();
 
-  const slug = await createUniqueSlug(
-    env.DB,
-    payload.slug,
-    title
-  );
+  const slug =
+    await createUniqueSlug(
+      env.DB,
+      payload.slug,
+      title
+    );
 
-  const categories = normalizeNamedList([
-    ...(Array.isArray(payload.categories)
-      ? payload.categories
-      : []),
+  const categories =
+    normalizeNamedList([
+      ...(
+        Array.isArray(
+          payload.categories
+        )
+          ? payload.categories
+          : []
+      ),
 
-    ...(payload.category
-      ? [payload.category]
-      : []),
-  ]);
+      ...(
+        payload.category
+          ? [payload.category]
+          : []
+      ),
+    ]);
 
   if (!categories.length) {
-    categories.push("Без категории");
+    categories.push(
+      "Без категории"
+    );
   }
 
-  const tags = normalizeNamedList(payload.tags);
+  const tags =
+    normalizeNamedList(
+      payload.tags
+    );
 
   const recipeValues = [
     id,
     slug,
     title,
-    stringOrNull(payload.description),
+    stringOrNull(
+      payload.description
+    ),
 
-    numberOrNull(payload.servings),
+    numberOrNull(
+      payload.servings
+    ),
+
     stringOrNull(
       payload.servingsText ??
       payload.servings_text
     ),
+
     numberOrNull(
       payload.servingsMin ??
       payload.servings_min
     ),
+
     numberOrNull(
       payload.servingsMax ??
       payload.servings_max
@@ -745,10 +1196,12 @@ async function createRecipe(request, env, url) {
       payload.prepMinutes ??
       payload.prep_minutes
     ),
+
     integerOrNull(
       payload.cookMinutes ??
       payload.cook_minutes
     ),
+
     integerOrNull(
       payload.totalMinutes ??
       payload.total_minutes
@@ -758,33 +1211,42 @@ async function createRecipe(request, env, url) {
       payload.sourceName ??
       payload.source_name
     ),
+
     sourceUrl,
 
     stringOrNull(
       payload.imageKey ??
       payload.image_key
     ),
+
     imageSourceUrl,
+
     stringOrNull(
       payload.imageCredit ??
       payload.image_credit
     ),
 
-    stringOrNull(payload.tips),
+    stringOrNull(
+      payload.tips
+    ),
 
     stringOrNull(
       payload.serveWith ??
       payload.serve_with
     ),
 
-    stringOrNull(payload.notes),
+    stringOrNull(
+      payload.notes
+    ),
 
     stringOrNull(
       payload.batchTip ??
       payload.batch_tip
     ),
 
-    stringOrNull(payload.highlight),
+    stringOrNull(
+      payload.highlight
+    ),
 
     stringOrNull(
       payload.nutritionBasis ??
@@ -832,183 +1294,238 @@ async function createRecipe(request, env, url) {
   const statements = [];
 
   statements.push(
-    env.DB.prepare(`
-      INSERT INTO recipes (
-        id,
-        slug,
-        title,
-        description,
+    env.DB
+      .prepare(`
+        INSERT INTO recipes (
+          id,
+          slug,
+          title,
+          description,
 
-        servings,
-        servings_text,
-        servings_min,
-        servings_max,
+          servings,
+          servings_text,
+          servings_min,
+          servings_max,
 
-        prep_minutes,
-        cook_minutes,
-        total_minutes,
+          prep_minutes,
+          cook_minutes,
+          total_minutes,
 
-        source_name,
-        source_url,
+          source_name,
+          source_url,
 
-        image_key,
-        image_source_url,
-        image_credit,
+          image_key,
+          image_source_url,
+          image_credit,
 
-        tips,
-        serve_with,
-        notes,
-        batch_tip,
-        highlight,
+          tips,
+          serve_with,
+          notes,
+          batch_tip,
+          highlight,
 
-        nutrition_basis,
-        calories_kcal,
-        protein_g,
-        fat_g,
-        carbs_g,
+          nutrition_basis,
+          calories_kcal,
+          protein_g,
+          fat_g,
+          carbs_g,
 
-        is_verified,
-        is_weekly_prep,
-        is_favorite,
+          is_verified,
+          is_weekly_prep,
+          is_favorite,
 
-        reset_box_exported_at,
+          reset_box_exported_at,
 
-        created_at,
-        updated_at,
-        deleted_at
-      )
-      VALUES (
-        ?, ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?,
-        ?, ?,
-        ?, ?, ?,
-        ?, ?, ?, ?, ?,
-        ?, ?, ?, ?, ?,
-        ?, ?, ?,
-        ?,
-        CURRENT_TIMESTAMP,
-        CURRENT_TIMESTAMP,
-        NULL
-      )
-    `).bind(...recipeValues)
+          created_at,
+          updated_at,
+          deleted_at
+        )
+        VALUES (
+          ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?,
+          ?, ?,
+          ?, ?, ?,
+          ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?,
+          ?, ?, ?,
+          ?,
+          CURRENT_TIMESTAMP,
+          CURRENT_TIMESTAMP,
+          NULL
+        )
+      `)
+      .bind(...recipeValues)
   );
 
-  for (const ingredient of ingredients) {
+  for (
+    const ingredient
+    of ingredients
+  ) {
     statements.push(
-      env.DB.prepare(`
-        INSERT INTO ingredients (
-          recipe_id,
-          position,
-          section,
-          name,
-          amount,
-          amount_min,
-          amount_max,
-          unit,
-          raw_text
+      env.DB
+        .prepare(`
+          INSERT INTO ingredients (
+            recipe_id,
+            position,
+            section,
+            name,
+            amount,
+            amount_min,
+            amount_max,
+            unit,
+            raw_text
+          )
+          VALUES (
+            ?, ?, ?, ?, ?,
+            ?, ?, ?, ?
+          )
+        `)
+        .bind(
+          id,
+          ingredient.position,
+          ingredient.section,
+          ingredient.name,
+          ingredient.amount,
+          ingredient.amountMin,
+          ingredient.amountMax,
+          ingredient.unit,
+          ingredient.rawText
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(
-        id,
-        ingredient.position,
-        ingredient.section,
-        ingredient.name,
-        ingredient.amount,
-        ingredient.amountMin,
-        ingredient.amountMax,
-        ingredient.unit,
-        ingredient.rawText
-      )
     );
   }
 
   for (const step of steps) {
     statements.push(
-      env.DB.prepare(`
-        INSERT INTO steps (
-          recipe_id,
-          position,
-          section,
-          instruction
+      env.DB
+        .prepare(`
+          INSERT INTO steps (
+            recipe_id,
+            position,
+            section,
+            instruction
+          )
+          VALUES (?, ?, ?, ?)
+        `)
+        .bind(
+          id,
+          step.position,
+          step.section,
+          step.instruction
         )
-        VALUES (?, ?, ?, ?)
-      `).bind(
-        id,
-        step.position,
-        step.section,
-        step.instruction
-      )
     );
   }
 
-  for (const categoryName of categories.slice(0, 20)) {
+  for (
+    const categoryName
+    of categories.slice(0, 20)
+  ) {
     const categorySlug =
       slugify(categoryName) ||
-      `category-${crypto
-        .randomUUID()
-        .slice(0, 8)}`;
+      `category-${
+        crypto
+          .randomUUID()
+          .slice(0, 8)
+      }`;
 
     statements.push(
-      env.DB.prepare(`
-        INSERT OR IGNORE INTO categories (
-          name,
-          slug
+      env.DB
+        .prepare(`
+          INSERT OR IGNORE
+          INTO categories (
+            name,
+            slug
+          )
+          VALUES (?, ?)
+        `)
+        .bind(
+          categoryName,
+          categorySlug
         )
-        VALUES (?, ?)
-      `).bind(categoryName, categorySlug)
     );
 
     statements.push(
-      env.DB.prepare(`
-        INSERT OR IGNORE INTO recipe_categories (
-          recipe_id,
-          category_id
+      env.DB
+        .prepare(`
+          INSERT OR IGNORE
+          INTO recipe_categories (
+            recipe_id,
+            category_id
+          )
+          SELECT ?, id
+          FROM categories
+          WHERE slug = ?
+        `)
+        .bind(
+          id,
+          categorySlug
         )
-        SELECT ?, id
-        FROM categories
-        WHERE slug = ?
-      `).bind(id, categorySlug)
     );
   }
 
-  for (const tagName of tags.slice(0, 30)) {
+  for (
+    const tagName
+    of tags.slice(0, 30)
+  ) {
     const tagSlug =
       slugify(tagName) ||
-      `tag-${crypto.randomUUID().slice(0, 8)}`;
+      `tag-${
+        crypto
+          .randomUUID()
+          .slice(0, 8)
+      }`;
 
     statements.push(
-      env.DB.prepare(`
-        INSERT OR IGNORE INTO tags (
-          name,
-          slug
+      env.DB
+        .prepare(`
+          INSERT OR IGNORE
+          INTO tags (
+            name,
+            slug
+          )
+          VALUES (?, ?)
+        `)
+        .bind(
+          tagName,
+          tagSlug
         )
-        VALUES (?, ?)
-      `).bind(tagName, tagSlug)
     );
 
     statements.push(
-      env.DB.prepare(`
-        INSERT OR IGNORE INTO recipe_tags (
-          recipe_id,
-          tag_id
+      env.DB
+        .prepare(`
+          INSERT OR IGNORE
+          INTO recipe_tags (
+            recipe_id,
+            tag_id
+          )
+          SELECT ?, id
+          FROM tags
+          WHERE slug = ?
+        `)
+        .bind(
+          id,
+          tagSlug
         )
-        SELECT ?, id
-        FROM tags
-        WHERE slug = ?
-      `).bind(id, tagSlug)
     );
   }
 
   try {
-    await env.DB.batch(statements);
+    await env.DB.batch(
+      statements
+    );
   } catch (error) {
-    console.error("Recipe creation failed:", error);
+    console.error(
+      "Recipe creation failed:",
+      error
+    );
 
     return jsonResponse(
       {
         success: false,
-        error: "Database write failed",
+        error:
+          "Database write failed",
+
         message:
           "Не удалось сохранить рецепт в базе.",
 
@@ -1024,7 +1541,8 @@ async function createRecipe(request, env, url) {
   return jsonResponse(
     {
       success: true,
-      message: "Рецепт добавлен в книгу.",
+      message:
+        "Рецепт добавлен в книгу.",
 
       item: {
         id,
@@ -1040,77 +1558,91 @@ async function createRecipe(request, env, url) {
   );
 }
 
-async function getRecipeCatalog(env) {
-  const result = await env.DB.prepare(`
-    SELECT
-      r.id,
-      r.slug,
-      r.title,
-      r.description,
+async function getRecipeCatalog(
+  env
+) {
+  const result =
+    await env.DB
+      .prepare(`
+        SELECT
+          r.id,
+          r.slug,
+          r.title,
+          r.description,
 
-      r.servings,
-      r.servings_text,
-      r.servings_min,
-      r.servings_max,
+          r.servings,
+          r.servings_text,
+          r.servings_min,
+          r.servings_max,
 
-      r.prep_minutes,
-      r.cook_minutes,
-      r.total_minutes,
+          r.prep_minutes,
+          r.cook_minutes,
+          r.total_minutes,
 
-      r.source_name,
-      r.source_url,
+          r.source_name,
+          r.source_url,
 
-      r.image_key,
+          r.image_key,
 
-      r.is_verified,
-      r.is_weekly_prep,
-      r.is_favorite,
+          r.is_verified,
+          r.is_weekly_prep,
+          r.is_favorite,
 
-      r.created_at,
-      r.updated_at,
+          r.created_at,
+          r.updated_at,
 
-      COALESCE(
-        (
-          SELECT c.name
-          FROM categories c
-          INNER JOIN recipe_categories rc
-            ON rc.category_id = c.id
-          WHERE rc.recipe_id = r.id
-          ORDER BY c.name COLLATE NOCASE
-          LIMIT 1
-        ),
-        'Без категории'
-      ) AS category,
+          COALESCE(
+            (
+              SELECT c.name
+              FROM categories c
+              INNER JOIN recipe_categories rc
+                ON rc.category_id = c.id
+              WHERE rc.recipe_id = r.id
+              ORDER BY c.name COLLATE NOCASE
+              LIMIT 1
+            ),
+            'Без категории'
+          ) AS category,
 
-      COALESCE(
-        (
-          SELECT GROUP_CONCAT(t.name, '|||')
-          FROM tags t
-          INNER JOIN recipe_tags rt
-            ON rt.tag_id = t.id
-          WHERE rt.recipe_id = r.id
-        ),
-        ''
-      ) AS tags_text
+          COALESCE(
+            (
+              SELECT GROUP_CONCAT(
+                t.name,
+                '|||'
+              )
+              FROM tags t
+              INNER JOIN recipe_tags rt
+                ON rt.tag_id = t.id
+              WHERE rt.recipe_id = r.id
+            ),
+            ''
+          ) AS tags_text
 
-    FROM recipes r
+        FROM recipes r
 
-    WHERE r.deleted_at IS NULL
+        WHERE r.deleted_at IS NULL
 
-    ORDER BY r.title COLLATE NOCASE
-  `).all();
+        ORDER BY
+          r.title COLLATE NOCASE
+      `)
+      .all();
 
-  const items = (result.results ?? []).map(
-    ({ tags_text, ...recipe }) => ({
-      ...recipe,
+  const items =
+    (result.results ?? [])
+      .map(
+        ({
+          tags_text,
+          ...recipe
+        }) => ({
+          ...recipe,
 
-      tags: tags_text
-        ? tags_text
-            .split("|||")
-            .filter(Boolean)
-        : [],
-    })
-  );
+          tags: tags_text
+            ? tags_text
+                .split("|||")
+                .filter(Boolean)
+            : [],
+        })
+      );
 
   return jsonResponse({
     success: true,
@@ -1118,58 +1650,63 @@ async function getRecipeCatalog(env) {
   });
 }
 
-async function getFullRecipe(env, slug) {
-  const recipe = await env.DB.prepare(`
-    SELECT
-      id,
-      slug,
-      title,
-      description,
+async function getFullRecipe(
+  env,
+  slug
+) {
+  const recipe =
+    await env.DB
+      .prepare(`
+        SELECT
+          id,
+          slug,
+          title,
+          description,
 
-      servings,
-      servings_text,
-      servings_min,
-      servings_max,
+          servings,
+          servings_text,
+          servings_min,
+          servings_max,
 
-      prep_minutes,
-      cook_minutes,
-      total_minutes,
+          prep_minutes,
+          cook_minutes,
+          total_minutes,
 
-      source_name,
-      source_url,
+          source_name,
+          source_url,
 
-      image_key,
-      image_source_url,
-      image_credit,
+          image_key,
+          image_source_url,
+          image_credit,
 
-      tips,
-      serve_with,
-      notes,
-      batch_tip,
-      highlight,
+          tips,
+          serve_with,
+          notes,
+          batch_tip,
+          highlight,
 
-      nutrition_basis,
-      calories_kcal,
-      protein_g,
-      fat_g,
-      carbs_g,
+          nutrition_basis,
+          calories_kcal,
+          protein_g,
+          fat_g,
+          carbs_g,
 
-      is_verified,
-      is_weekly_prep,
-      is_favorite,
+          is_verified,
+          is_weekly_prep,
+          is_favorite,
 
-      created_at,
-      updated_at
+          created_at,
+          updated_at
 
-    FROM recipes
+        FROM recipes
 
-    WHERE slug = ?
-      AND deleted_at IS NULL
+        WHERE slug = ?
+          AND deleted_at IS NULL
 
-    LIMIT 1
-  `)
-    .bind(slug)
-    .first();
+        LIMIT 1
+      `)
+      .bind(slug)
+      .first();
 
   if (!recipe) {
     return jsonResponse(
@@ -1187,62 +1724,66 @@ async function getFullRecipe(env, slug) {
     categoriesResult,
     tagsResult,
   ] = await Promise.all([
-    env.DB.prepare(`
-      SELECT
-        id,
-        position,
-        section,
-        name,
-        amount,
-        amount_min,
-        amount_max,
-        unit,
-        raw_text
-      FROM ingredients
-      WHERE recipe_id = ?
-      ORDER BY position
-    `)
+    env.DB
+      .prepare(`
+        SELECT
+          id,
+          position,
+          section,
+          name,
+          amount,
+          amount_min,
+          amount_max,
+          unit,
+          raw_text
+        FROM ingredients
+        WHERE recipe_id = ?
+        ORDER BY position
+      `)
       .bind(recipe.id)
       .all(),
 
-    env.DB.prepare(`
-      SELECT
-        id,
-        position,
-        section,
-        instruction
-      FROM steps
-      WHERE recipe_id = ?
-      ORDER BY position
-    `)
+    env.DB
+      .prepare(`
+        SELECT
+          id,
+          position,
+          section,
+          instruction
+        FROM steps
+        WHERE recipe_id = ?
+        ORDER BY position
+      `)
       .bind(recipe.id)
       .all(),
 
-    env.DB.prepare(`
-      SELECT
-        c.id,
-        c.name,
-        c.slug
-      FROM categories c
-      INNER JOIN recipe_categories rc
-        ON rc.category_id = c.id
-      WHERE rc.recipe_id = ?
-      ORDER BY c.name COLLATE NOCASE
-    `)
+    env.DB
+      .prepare(`
+        SELECT
+          c.id,
+          c.name,
+          c.slug
+        FROM categories c
+        INNER JOIN recipe_categories rc
+          ON rc.category_id = c.id
+        WHERE rc.recipe_id = ?
+        ORDER BY c.name COLLATE NOCASE
+      `)
       .bind(recipe.id)
       .all(),
 
-    env.DB.prepare(`
-      SELECT
-        t.id,
-        t.name,
-        t.slug
-      FROM tags t
-      INNER JOIN recipe_tags rt
-        ON rt.tag_id = t.id
-      WHERE rt.recipe_id = ?
-      ORDER BY t.name COLLATE NOCASE
-    `)
+    env.DB
+      .prepare(`
+        SELECT
+          t.id,
+          t.name,
+          t.slug
+        FROM tags t
+        INNER JOIN recipe_tags rt
+          ON rt.tag_id = t.id
+        WHERE rt.recipe_id = ?
+        ORDER BY t.name COLLATE NOCASE
+      `)
       .bind(recipe.id)
       .all(),
   ]);
@@ -1254,42 +1795,72 @@ async function getFullRecipe(env, slug) {
       ...recipe,
 
       ingredients:
-        ingredientsResult.results ?? [],
+        ingredientsResult.results ??
+        [],
 
       steps:
-        stepsResult.results ?? [],
+        stepsResult.results ??
+        [],
 
       categories:
-        categoriesResult.results ?? [],
+        categoriesResult.results ??
+        [],
 
       tags:
-        tagsResult.results ?? [],
+        tagsResult.results ??
+        [],
     },
   });
 }
 
 export default {
   async fetch(request, env) {
-    const url = new URL(request.url);
+    const url =
+      new URL(request.url);
 
     try {
+      if (
+        ["GET", "HEAD"].includes(
+          request.method
+        ) &&
+        url.pathname.startsWith(
+          "/images/"
+        )
+      ) {
+        return serveImage(
+          request,
+          env,
+          url
+        );
+      }
+
       if (
         request.method === "GET" &&
         url.pathname === "/api/health"
       ) {
-        const result = await env.DB
-          .prepare("SELECT 1 AS ok")
-          .first();
+        const result =
+          await env.DB
+            .prepare(
+              "SELECT 1 AS ok"
+            )
+            .first();
 
         return jsonResponse({
-          success: result?.ok === 1,
-          database: "recepty-db",
+          success:
+            result?.ok === 1,
+
+          database:
+            "recepty-db",
+
+          images:
+            Boolean(env.IMAGES),
         });
       }
 
       if (
         request.method === "GET" &&
-        url.pathname === "/api/recipes"
+        url.pathname ===
+          "/api/recipes"
       ) {
         return getRecipeCatalog(env);
       }
@@ -1303,53 +1874,91 @@ export default {
             "/api/assistant/recipes/search"
         )
       ) {
-        return searchRecipes(request, env, url);
+        return searchRecipes(
+          request,
+          env,
+          url
+        );
       }
 
       if (
         request.method === "POST" &&
         (
-          url.pathname === "/api/admin/recipes" ||
+          url.pathname ===
+            "/api/admin/images" ||
+          url.pathname ===
+            "/api/assistant/images"
+        )
+      ) {
+        return uploadImage(
+          request,
+          env,
+          url
+        );
+      }
+
+      if (
+        request.method === "POST" &&
+        (
+          url.pathname ===
+            "/api/admin/recipes" ||
           url.pathname ===
             "/api/assistant/recipes"
         )
       ) {
-        return createRecipe(request, env, url);
+        return createRecipe(
+          request,
+          env,
+          url
+        );
       }
 
-      const recipeMatch = url.pathname.match(
-        /^\/api\/recipes\/([^/]+)$/
-      );
+      const recipeMatch =
+        url.pathname.match(
+          /^\/api\/recipes\/([^/]+)$/
+        );
 
       if (
         request.method === "GET" &&
         recipeMatch
       ) {
-        const slug = decodeURIComponent(
-          recipeMatch[1]
-        );
+        const slug =
+          decodeURIComponent(
+            recipeMatch[1]
+          );
 
-        return getFullRecipe(env, slug);
+        return getFullRecipe(
+          env,
+          slug
+        );
       }
 
-      if (url.pathname.startsWith("/api/")) {
+      if (
+        url.pathname.startsWith(
+          "/api/"
+        )
+      ) {
         return jsonResponse(
           {
             success: false,
-            error: "API route not found",
+            error:
+              "API route not found",
           },
           404
         );
       }
 
-      return env.ASSETS.fetch(request);
+      return env.ASSETS.fetch(
+        request
+      );
     } catch (error) {
       console.error(error);
 
       return jsonResponse(
         {
           success: false,
-          error: "Server request failed",
+          error:
+            "Server request failed",
 
           details:
             error instanceof Error
