@@ -3,7 +3,7 @@
 **/node_modules
 .gitignore
 .assetsignore
-wrangler.jsonc
+wrangler*.jsonc
 package*.json
 README.md
 src/
