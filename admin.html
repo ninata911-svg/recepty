@@ -206,6 +206,57 @@
       font-weight: 800;
     }
 
+    .image-upload-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(240px, .8fr);
+      gap: 20px;
+      align-items: start;
+    }
+
+    .image-picker {
+      display: grid;
+      gap: 10px;
+    }
+
+    .image-picker input[type="file"] {
+      width: 100%;
+      border: 1px dashed var(--line);
+      border-radius: 16px;
+      background: var(--paper);
+      padding: 18px;
+      color: var(--text);
+      font: inherit;
+    }
+
+    .image-preview-card {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--paper);
+    }
+
+    .image-preview-card img {
+      display: block;
+      width: 100%;
+      max-height: 360px;
+      object-fit: cover;
+      background: var(--soft);
+    }
+
+    .image-preview-info {
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+    }
+
+    .image-preview-info p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+
     [hidden] {
       display: none !important;
     }
@@ -216,7 +267,8 @@
         padding-right: 16px;
       }
 
-      .form-grid {
+      .form-grid,
+      .image-upload-grid {
         grid-template-columns: 1fr;
       }
 
@@ -409,6 +461,32 @@
             </div>
 
             <div class="form-field">
+              <label for="prep-minutes">Подготовка, минут</label>
+
+              <input
+                id="prep-minutes"
+                name="prepMinutes"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="20"
+              >
+            </div>
+
+            <div class="form-field">
+              <label for="cook-minutes">Приготовление, минут</label>
+
+              <input
+                id="cook-minutes"
+                name="cookMinutes"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="40"
+              >
+            </div>
+
+            <div class="form-field">
               <label for="total-minutes">Общее время, минут</label>
 
               <input
@@ -420,20 +498,57 @@
                 placeholder="60"
               >
             </div>
+          </div>
+        </section>
 
-            <div class="form-field">
-              <label for="image-key">Ссылка на фотографию</label>
+        <section class="block">
+          <h2>Фотография</h2>
 
-              <input
-                id="image-key"
-                name="imageKey"
-                type="url"
-                placeholder="https://..."
+          <div class="image-upload-grid">
+            <div class="image-picker">
+              <div class="form-field">
+                <label for="image-file">
+                  Выбрать фотографию
+                </label>
+
+                <input
+                  id="image-file"
+                  name="imageFile"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                >
+
+                <small>
+                  Поддерживаются JPG, PNG и WebP размером до 8 МБ.
+                  Для экономии места лучше использовать изображение
+                  до 1600 пикселей и весом до 1–2 МБ.
+                </small>
+              </div>
+
+              <p id="image-status" class="status-message" hidden></p>
+            </div>
+
+            <div
+              id="image-preview-card"
+              class="image-preview-card"
+              hidden
+            >
+              <img
+                id="image-preview"
+                alt="Предварительный просмотр фотографии"
               >
 
-              <small>
-                Загрузка собственной фотографии появится отдельным этапом.
-              </small>
+              <div class="image-preview-info">
+                <p id="image-file-info"></p>
+
+                <button
+                  id="remove-image-button"
+                  class="danger-button"
+                  type="button"
+                >
+                  Убрать фотографию
+                </button>
+              </div>
             </div>
           </div>
         </section>
@@ -565,7 +680,7 @@
                 id="source-name"
                 name="sourceName"
                 type="text"
-                placeholder="Семейный рецепт"
+                value="Рецепт от Пети"
               >
             </div>
 
@@ -577,6 +692,19 @@
                 name="sourceUrl"
                 type="url"
                 placeholder="https://..."
+              >
+            </div>
+
+            <div class="form-field full">
+              <label for="image-credit">
+                Автор или источник фотографии
+              </label>
+
+              <input
+                id="image-credit"
+                name="imageCredit"
+                type="text"
+                placeholder="Например: собственная фотография"
               >
             </div>
           </div>
