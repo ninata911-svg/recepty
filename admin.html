@@ -257,6 +257,158 @@
       overflow-wrap: anywhere;
     }
 
+    .import-box {
+      border: 2px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+      background:
+        linear-gradient(
+          135deg,
+          color-mix(in srgb, var(--soft) 75%, transparent),
+          var(--paper)
+        );
+    }
+
+    .import-form-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: end;
+    }
+
+    .import-preview {
+      margin-top: 18px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: var(--paper);
+    }
+
+    .import-preview-layout {
+      display: grid;
+      grid-template-columns: minmax(220px, .75fr) minmax(0, 1.25fr);
+    }
+
+    .import-preview-image-wrap {
+      min-height: 260px;
+      background: var(--soft);
+    }
+
+    .import-preview-image-wrap img {
+      width: 100%;
+      height: 100%;
+      min-height: 260px;
+      max-height: 460px;
+      display: block;
+      object-fit: cover;
+    }
+
+    .import-preview-body {
+      display: grid;
+      align-content: start;
+      gap: 14px;
+      padding: 22px;
+    }
+
+    .import-preview-body h3 {
+      margin: 0;
+      font: 700 clamp(27px, 4vw, 40px) / 1.05 Georgia, serif;
+    }
+
+    .import-preview-body p {
+      margin: 0;
+      line-height: 1.55;
+    }
+
+    .import-source {
+      color: var(--muted);
+      overflow-wrap: anywhere;
+    }
+
+    .import-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .import-meta span {
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: var(--soft);
+      color: var(--accent-dark);
+      font-size: 14px;
+      font-weight: 800;
+    }
+
+    .import-warning-list {
+      margin: 0;
+      padding: 14px 18px 14px 34px;
+      border-radius: 15px;
+      background: var(--highlight);
+      line-height: 1.5;
+    }
+
+    .import-details {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      padding: 0 22px 22px;
+    }
+
+    .import-detail-card {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 16px;
+      background: var(--paper);
+    }
+
+    .import-detail-card h4 {
+      margin: 0 0 10px;
+      font-size: 17px;
+    }
+
+    .import-scroll-list {
+      max-height: 300px;
+      margin: 0;
+      padding-left: 22px;
+      overflow: auto;
+      line-height: 1.5;
+    }
+
+    .import-scroll-list li + li {
+      margin-top: 7px;
+    }
+
+    .import-preview-footer {
+      display: grid;
+      gap: 14px;
+      padding: 18px 22px 22px;
+      border-top: 1px solid var(--line);
+    }
+
+    .import-image-choice {
+      display: grid;
+      grid-template-columns: 22px 1fr;
+      gap: 10px;
+      align-items: start;
+      cursor: pointer;
+    }
+
+    .import-image-choice input {
+      width: 18px;
+      height: 18px;
+      margin-top: 3px;
+    }
+
+    .import-image-choice strong {
+      display: block;
+      margin-bottom: 3px;
+    }
+
+    .import-image-choice small {
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
     [hidden] {
       display: none !important;
     }
@@ -268,7 +420,10 @@
       }
 
       .form-grid,
-      .image-upload-grid {
+      .image-upload-grid,
+      .import-form-row,
+      .import-preview-layout,
+      .import-details {
         grid-template-columns: 1fr;
       }
 
@@ -278,6 +433,12 @@
 
       .admin-actions > * {
         width: 100%;
+      }
+
+      .import-preview-image-wrap,
+      .import-preview-image-wrap img {
+        min-height: 210px;
+        max-height: 330px;
       }
     }
   </style>
@@ -379,10 +540,136 @@
         <h1>Добавить рецепт</h1>
 
         <p>
-          После сохранения рецепт сразу появится в общем каталоге.
-          Обновлять версию сайта не потребуется.
+          Рецепт можно заполнить вручную или сначала импортировать
+          с сайта. После импорта обязательно проверьте данные и только
+          потом сохраните карточку.
         </p>
       </div>
+
+      <section class="block import-box">
+        <h2>Импортировать по ссылке</h2>
+
+        <p class="form-help">
+          Вставьте ссылку на страницу рецепта. Мы попробуем получить
+          название, ингредиенты, шаги, время, порции и фотографию.
+          Ничего не сохранится без вашего подтверждения.
+        </p>
+
+        <form id="import-form" class="admin-form">
+          <div class="import-form-row">
+            <div class="form-field">
+              <label for="import-url">Ссылка на рецепт</label>
+
+              <input
+                id="import-url"
+                name="importUrl"
+                type="url"
+                inputmode="url"
+                autocomplete="url"
+                placeholder="https://..."
+                required
+              >
+            </div>
+
+            <button
+              id="import-button"
+              class="primary-button"
+              type="submit"
+            >
+              Получить рецепт
+            </button>
+          </div>
+
+          <p id="import-status" class="status-message" hidden></p>
+        </form>
+
+        <article id="import-preview" class="import-preview" hidden>
+          <div class="import-preview-layout">
+            <div
+              id="import-preview-image-wrap"
+              class="import-preview-image-wrap"
+              hidden
+            >
+              <img
+                id="import-preview-image"
+                alt="Фотография найденного рецепта"
+              >
+            </div>
+
+            <div class="import-preview-body">
+              <p class="kicker">Предварительный просмотр</p>
+              <h3 id="import-preview-title">Рецепт</h3>
+              <p id="import-preview-description" hidden></p>
+              <p id="import-preview-source" class="import-source"></p>
+              <div id="import-preview-meta" class="import-meta"></div>
+
+              <ul
+                id="import-preview-warnings"
+                class="import-warning-list"
+                hidden
+              ></ul>
+            </div>
+          </div>
+
+          <div class="import-details">
+            <section class="import-detail-card">
+              <h4 id="import-ingredients-heading">Ингредиенты</h4>
+              <ul
+                id="import-preview-ingredients"
+                class="import-scroll-list"
+              ></ul>
+            </section>
+
+            <section class="import-detail-card">
+              <h4 id="import-steps-heading">Приготовление</h4>
+              <ol
+                id="import-preview-steps"
+                class="import-scroll-list"
+              ></ol>
+            </section>
+          </div>
+
+          <div class="import-preview-footer">
+            <label
+              id="import-image-choice"
+              class="import-image-choice"
+              hidden
+            >
+              <input
+                id="import-image-checkbox"
+                type="checkbox"
+                checked
+              >
+
+              <span>
+                <strong>Сохранить найденную фотографию</strong>
+                <small>
+                  При сохранении рецепта изображение будет скопировано
+                  в ваше R2-хранилище.
+                </small>
+              </span>
+            </label>
+
+            <div class="admin-actions">
+              <button
+                id="apply-import-button"
+                class="primary-button"
+                type="button"
+              >
+                Перенести в форму
+              </button>
+
+              <button
+                id="cancel-import-button"
+                class="danger-button"
+                type="button"
+              >
+                Отменить импорт
+              </button>
+            </div>
+          </div>
+        </article>
+      </section>
 
       <form id="recipe-form" class="admin-form">
         <section class="block">
