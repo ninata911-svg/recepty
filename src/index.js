@@ -2177,8 +2177,80 @@ async function updateRecipe(
           encodeURIComponent(slug),
       },
     },
-    200
-  );
+      200
+   );
+}
+
+async function deleteRecipe(
+  request,
+  env,
+  url,
+  slug
+) {
+  const authorizationError =
+    await requireAuthorization(
+      request,
+      env
+    );
+
+  if (authorizationError) {
+    return authorizationError;
+  }
+
+  try {
+    const result =
+      await env.DB
+        .prepare(
+          `
+            UPDATE recipes
+            SET deleted_at = CURRENT_TIMESTAMP
+            WHERE slug = ?
+              AND deleted_at IS NULL
+          `
+        )
+        .bind(slug)
+        .run();
+
+    if (!result.meta.changes) {
+      return jsonResponse(
+        {
+          success: false,
+          error: "Recipe not found",
+          message:
+            "Рецепт не найден или уже удалён.",
+        },
+        404
+      );
+    }
+
+    return jsonResponse({
+      success: true,
+      message:
+        "Рецепт удалён.",
+    });
+  } catch (error) {
+    console.error(
+      "Recipe deletion failed:",
+      error
+    );
+
+    return jsonResponse(
+      {
+        success: false,
+        error:
+          "Database write failed",
+
+        message:
+          "Не удалось удалить рецепт.",
+
+        details:
+          error instanceof Error
+            ? error.message
+            : String(error),
+      },
+      500
+    );
+  }
 }
 
 async function getRecipeCatalog(
@@ -2551,6 +2623,23 @@ export default {
           );
 
         return updateRecipe(
+          request,
+          env,
+          url,
+          slug
+        );
+      }
+
+      if (
+        request.method === "DELETE" &&
+        editMatch
+      ) {
+        const slug =
+          decodeURIComponent(
+            editMatch[1]
+          );
+
+        return deleteRecipe(
           request,
           env,
           url,

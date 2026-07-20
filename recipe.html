@@ -13,6 +13,46 @@
 
   <link rel="stylesheet" href="/assets/css/styles.css">
 
+  <style>
+    .admin-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-top: 20px;
+    }
+
+    .secondary-button,
+    .danger-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 18px;
+      font: inherit;
+      font-weight: 850;
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    .secondary-button {
+      background: var(--soft);
+      color: var(--accent-dark);
+    }
+
+    .danger-button {
+      background: var(--paper);
+      color: var(--text);
+      border: 1px solid var(--line);
+    }
+
+    .danger-button:disabled {
+      opacity: .55;
+      cursor: wait;
+    }
+  </style>
+
   <script
     id="recipe-jsonld"
     type="application/ld+json"
@@ -142,6 +182,12 @@
         class="secondary-button"
         href="#"
       >Редактировать</a>
+      <button
+        id="delete-recipe-button"
+        class="danger-button"
+        type="button"
+        hidden
+      >Удалить рецепт</button>
     </div>
   </main>
 
@@ -150,10 +196,64 @@
       if (sessionStorage.getItem("receptyAdminKey")) {
         var wrap = document.getElementById("edit-recipe-wrap");
         var link = document.getElementById("edit-recipe-link");
+        var deleteButton = document.getElementById("delete-recipe-button");
         var slug = new URLSearchParams(window.location.search).get("slug");
         if (wrap && link && slug) {
           link.href = "/admin.html?edit=" + encodeURIComponent(slug);
           wrap.hidden = false;
+          if (deleteButton) {
+            deleteButton.hidden = false;
+            deleteButton.addEventListener("click", function () {
+              if (!slug) return;
+              var ok = window.confirm(
+                "Удалить этот рецепт? Карточка будет скрыта из каталога, фотография останется в хранилище."
+              );
+              if (!ok) return;
+
+              deleteButton.disabled = true;
+              var originalText = deleteButton.textContent;
+              deleteButton.textContent = "Удаляем…";
+
+              fetch(
+                "/api/admin/recipes/" + encodeURIComponent(slug),
+                {
+                  method: "DELETE",
+                  headers: {
+                    Accept: "application/json",
+                    Authorization:
+                      "Bearer " + sessionStorage.getItem("receptyAdminKey"),
+                  },
+                }
+              )
+                .then(function (response) {
+                  if (response.status === 401) {
+                    sessionStorage.removeItem("receptyAdminKey");
+                    throw new Error(
+                      "Срок режима редактора закончился. Войдите снова."
+                    );
+                  }
+                  return response.json().then(function (data) {
+                    if (!response.ok || !data.success) {
+                      throw new Error(
+                        data.message ||
+                        data.error ||
+                        "Не удалось удалить рецепт."
+                      );
+                    }
+                    window.location.href = "/";
+                  });
+                })
+                .catch(function (error) {
+                  deleteButton.disabled = false;
+                  deleteButton.textContent = originalText;
+                  window.alert(
+                    error && error.message
+                      ? error.message
+                      : "Не удалось удалить рецепт."
+                  );
+                });
+            });
+          }
         }
       }
     })();
