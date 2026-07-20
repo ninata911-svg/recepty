@@ -2253,6 +2253,140 @@ async function deleteRecipe(
   }
 }
 
+async function listDeletedRecipes(
+  request,
+  env
+) {
+  const authorizationError =
+    await requireAuthorization(
+      request,
+      env
+    );
+
+  if (authorizationError) {
+    return authorizationError;
+  }
+
+  try {
+    const result =
+      await env.DB
+        .prepare(
+          `
+            SELECT
+              id,
+              slug,
+              title,
+              deleted_at
+            FROM recipes
+            WHERE deleted_at IS NOT NULL
+            ORDER BY deleted_at DESC
+          `
+        )
+        .all();
+
+    return jsonResponse({
+      success: true,
+
+      items:
+        result.results ?? [],
+    });
+  } catch (error) {
+    console.error(
+      "Deleted recipes list failed:",
+      error
+    );
+
+    return jsonResponse(
+      {
+        success: false,
+        error:
+          "Database read failed",
+
+        message:
+          "Не удалось загрузить список удалённых рецептов.",
+
+        details:
+          error instanceof Error
+            ? error.message
+            : String(error),
+      },
+      500
+    );
+  }
+}
+
+async function restoreRecipe(
+  request,
+  env,
+  url,
+  slug
+) {
+  const authorizationError =
+    await requireAuthorization(
+      request,
+      env
+    );
+
+  if (authorizationError) {
+    return authorizationError;
+  }
+
+  try {
+    const result =
+      await env.DB
+        .prepare(
+          `
+            UPDATE recipes
+            SET deleted_at = NULL
+            WHERE slug = ?
+              AND deleted_at IS NOT NULL
+          `
+        )
+        .bind(slug)
+        .run();
+
+    if (!result.meta.changes) {
+      return jsonResponse(
+        {
+          success: false,
+          error: "Recipe not found",
+          message:
+            "Рецепт не найден или уже восстановлен.",
+        },
+        404
+      );
+    }
+
+    return jsonResponse({
+      success: true,
+      message:
+        "Рецепт восстановлен.",
+    });
+  } catch (error) {
+    console.error(
+      "Recipe restore failed:",
+      error
+    );
+
+    return jsonResponse(
+      {
+        success: false,
+        error:
+          "Database write failed",
+
+        message:
+          "Не удалось восстановить рецепт.",
+
+        details:
+          error instanceof Error
+            ? error.message
+            : String(error),
+      },
+      500
+    );
+  }
+}
+
 async function getRecipeCatalog(
   env
 ) {
@@ -2573,6 +2707,43 @@ export default {
           request,
           env,
           url
+        );
+      }
+
+      if (
+        request.method === "GET" &&
+        (
+          url.pathname ===
+            "/api/admin/recipes/deleted" ||
+          url.pathname ===
+            "/api/assistant/recipes/deleted"
+        )
+      ) {
+        return listDeletedRecipes(
+          request,
+          env
+        );
+      }
+
+      const restoreMatch =
+        url.pathname.match(
+          /^\/api\/(?:admin|assistant)\/recipes\/([^/]+)\/restore$/
+        );
+
+      if (
+        request.method === "POST" &&
+        restoreMatch
+      ) {
+        const slug =
+          decodeURIComponent(
+            restoreMatch[1]
+          );
+
+        return restoreRecipe(
+          request,
+          env,
+          url,
+          slug
         );
       }
 

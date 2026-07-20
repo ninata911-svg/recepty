@@ -579,6 +579,54 @@
         max-height: 330px;
       }
     }
+
+    .deleted-recipes-list {
+      display: grid;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .deleted-recipe-item {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--paper);
+    }
+
+    .deleted-recipe-info {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+      flex: 1 1 240px;
+    }
+
+    .deleted-recipe-title {
+      font-weight: 800;
+      word-break: break-word;
+    }
+
+    .deleted-recipe-date {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .deleted-recipe-actions {
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .deleted-empty {
+      color: var(--muted);
+      line-height: 1.6;
+    }
   </style>
 </head>
 
@@ -1306,6 +1354,28 @@
 
         <p id="save-status" class="status-message" hidden></p>
       </form>
+
+      <section class="block" id="deleted-recipes-section">
+        <h2>Удалённые рецепты</h2>
+
+        <p
+          id="deleted-recipes-status"
+          class="status-message"
+          hidden
+        ></p>
+
+        <ul
+          id="deleted-recipes-list"
+          class="deleted-recipes-list"
+          hidden
+        ></ul>
+
+        <p
+          id="deleted-recipes-empty"
+          class="deleted-empty"
+          hidden
+        >Удалённых рецептов нет.</p>
+      </section>
     </section>
   </main>
 

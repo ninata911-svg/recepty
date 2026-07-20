@@ -1897,6 +1897,7 @@ loginForm.addEventListener(
 
       storeKey(key);
       showEditor();
+      loadDeletedRecipes(key);
     } catch (error) {
       setStatus(
         loginStatus,
@@ -1925,6 +1926,7 @@ logoutButton.addEventListener(
     clearEditingState();
     hideStatus(saveStatus);
     hideStatus(importStatus);
+    clearDeletedRecipes();
     showLogin();
   }
 );
@@ -2136,6 +2138,242 @@ recipeForm.addEventListener(
   }
 );
 
+const deletedRecipesList =
+  document.querySelector("#deleted-recipes-list");
+
+const deletedRecipesEmpty =
+  document.querySelector("#deleted-recipes-empty");
+
+const deletedRecipesStatus =
+  document.querySelector("#deleted-recipes-status");
+
+const deletedRecipesSection =
+  document.querySelector("#deleted-recipes-section");
+
+function formatDate(iso) {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return String(iso);
+  return date.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function setDeletedListVisible(visible) {
+  if (deletedRecipesSection) {
+    deletedRecipesSection.hidden = !visible;
+  }
+}
+
+function clearDeletedRecipes() {
+  setDeletedListVisible(false);
+  if (deletedRecipesList) deletedRecipesList.replaceChildren();
+  if (deletedRecipesEmpty) deletedRecipesEmpty.hidden = true;
+  hideStatus(deletedRecipesStatus);
+}
+
+function renderDeletedRecipes(items) {
+  if (!deletedRecipesList) return;
+
+  deletedRecipesList.replaceChildren();
+
+  if (!items.length) {
+    deletedRecipesList.hidden = true;
+    if (deletedRecipesEmpty) deletedRecipesEmpty.hidden = false;
+    return;
+  }
+
+  if (deletedRecipesEmpty) deletedRecipesEmpty.hidden = true;
+
+  for (const item of items) {
+    const li = document.createElement("li");
+    li.className = "deleted-recipe-item";
+    li.dataset.slug = item.slug;
+
+    const info = document.createElement("div");
+    info.className = "deleted-recipe-info";
+
+    const title = document.createElement("span");
+    title.className = "deleted-recipe-title";
+    title.textContent = item.title || item.slug || "Рецепт";
+
+    const date = document.createElement("span");
+    date.className = "deleted-recipe-date";
+    date.textContent = `Удалён: ${formatDate(item.deleted_at)}`;
+
+    info.append(title, date);
+
+    const actions = document.createElement("div");
+    actions.className = "deleted-recipe-actions";
+
+    const restoreButton = document.createElement("button");
+    restoreButton.type = "button";
+    restoreButton.className = "secondary-button";
+    restoreButton.textContent = "Восстановить";
+    restoreButton.addEventListener("click", () =>
+      restoreDeletedRecipe(item.slug, restoreButton)
+    );
+
+    actions.append(restoreButton);
+
+    li.append(info, actions);
+    deletedRecipesList.append(li);
+  }
+
+  deletedRecipesList.hidden = false;
+}
+
+async function loadDeletedRecipes(key) {
+  if (!deletedRecipesSection) return;
+
+  setDeletedListVisible(true);
+  hideStatus(deletedRecipesStatus);
+
+  const token = key || getStoredKey();
+
+  if (!token) {
+    clearDeletedRecipes();
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      "/api/admin/recipes/deleted",
+      {
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (response.status === 401) {
+      removeKey();
+      showLogin();
+      throw new Error(
+        "Срок режима редактора закончился. Войдите снова."
+      );
+    }
+
+    const data = await response
+      .json()
+      .catch(() => null);
+
+    if (!response.ok || !data?.success) {
+      throw new Error(
+        data?.message ||
+        data?.error ||
+        "Не удалось загрузить удалённые рецепты."
+      );
+    }
+
+    renderDeletedRecipes(data.items || []);
+  } catch (error) {
+    setStatus(
+      deletedRecipesStatus,
+      error instanceof Error
+        ? error.message
+        : "Не удалось загрузить удалённые рецепты.",
+      "error"
+    );
+    if (deletedRecipesList) deletedRecipesList.hidden = true;
+    if (deletedRecipesEmpty) deletedRecipesEmpty.hidden = true;
+  }
+}
+
+async function restoreDeletedRecipe(slug, button) {
+  if (!slug) return;
+
+  const key = getStoredKey();
+
+  if (!key) {
+    showLogin();
+    return;
+  }
+
+  const confirmed = window.confirm(
+    "Восстановить рецепт? Он снова появится в каталоге."
+  );
+
+  if (!confirmed) return;
+
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Восстанавливаем…";
+
+  hideStatus(deletedRecipesStatus);
+
+  try {
+    const response = await fetch(
+      `/api/admin/recipes/${encodeURIComponent(slug)}/restore`,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${key}`,
+        },
+      }
+    );
+
+    if (response.status === 401) {
+      removeKey();
+      showLogin();
+      throw new Error(
+        "Срок режима редактора закончился. Войдите снова."
+      );
+    }
+
+    const data = await response
+      .json()
+      .catch(() => null);
+
+    if (!response.ok || !data?.success) {
+      throw new Error(
+        data?.message ||
+        data?.error ||
+        "Не удалось восстановить рецепт."
+      );
+    }
+
+    const item = deletedRecipesList?.querySelector(
+      `.deleted-recipe-item[data-slug="${CSS.escape(slug)}"]`
+    );
+
+    if (item) {
+      item.remove();
+    }
+
+    if (
+      deletedRecipesList &&
+      deletedRecipesList.children.length === 0
+    ) {
+      deletedRecipesList.hidden = true;
+      if (deletedRecipesEmpty) deletedRecipesEmpty.hidden = false;
+    }
+
+    setStatus(
+      deletedRecipesStatus,
+      `Рецепт «${slug}» восстановлен.`,
+      "success"
+    );
+  } catch (error) {
+    setStatus(
+      deletedRecipesStatus,
+      error instanceof Error
+        ? error.message
+        : "Не удалось восстановить рецепт.",
+      "error"
+    );
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
 async function initializeEditor() {
   const storedKey = getStoredKey();
 
@@ -2168,6 +2406,8 @@ async function initializeEditor() {
         storedKey
       );
     }
+
+    loadDeletedRecipes(storedKey);
   } catch {
     removeKey();
     showLogin();
