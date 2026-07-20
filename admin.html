@@ -674,14 +674,18 @@
       </div>
 
       <div class="admin-intro">
-        <p class="kicker">Новая карточка</p>
-        <h1>Добавить рецепт</h1>
+        <p class="kicker" id="form-kicker">Новая карточка</p>
+        <h1 id="form-title">Добавить рецепт</h1>
 
         <p>
           Рецепт можно заполнить вручную или сначала импортировать
           с сайта. После импорта обязательно проверьте данные и только
           потом сохраните карточку.
         </p>
+
+        <div id="new-recipe-button-wrap" hidden>
+          <a class="secondary-button" href="/admin.html">Создать новый рецепт</a>
+        </div>
       </div>
 
       <section class="block import-box">

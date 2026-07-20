@@ -1555,6 +1555,629 @@ async function createRecipe(
       },
     },
     201
+   );
+}
+
+async function updateRecipe(
+  request,
+  env,
+  url,
+  slug
+) {
+  const authorizationError =
+    await requireAuthorization(
+      request,
+      env
+    );
+
+  if (authorizationError) {
+    return authorizationError;
+  }
+
+  const contentLength =
+    Number(
+      request.headers.get(
+        "Content-Length"
+      ) || 0
+    );
+
+  if (
+    contentLength > 1_000_000
+  ) {
+    return jsonResponse(
+      {
+        success: false,
+        error: "Payload too large",
+        message:
+          "Размер данных рецепта превышает 1 МБ.",
+      },
+      413
+    );
+  }
+
+  let payload;
+
+  try {
+    payload =
+      await request.json();
+  } catch {
+    return jsonResponse(
+      {
+        success: false,
+        error: "Invalid JSON",
+        message:
+          "Сервер не смог прочитать данные рецепта.",
+      },
+      400
+    );
+  }
+
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    Array.isArray(payload)
+  ) {
+    return jsonResponse(
+      {
+        success: false,
+        error: "Invalid recipe",
+        message:
+          "Данные рецепта должны быть объектом.",
+      },
+      400
+    );
+  }
+
+  const title =
+    stringOrNull(payload.title);
+
+  if (!title) {
+    return jsonResponse(
+      {
+        success: false,
+        error: "Validation failed",
+
+        fields: {
+          title:
+            "Укажите название рецепта.",
+        },
+      },
+      400
+    );
+  }
+
+  if (title.length > 200) {
+    return jsonResponse(
+      {
+        success: false,
+        error: "Validation failed",
+
+        fields: {
+          title:
+            "Название не должно превышать 200 символов.",
+        },
+      },
+      400
+    );
+  }
+
+  const existing =
+    await env.DB
+      .prepare(`
+        SELECT id
+        FROM recipes
+        WHERE slug = ?
+          AND deleted_at IS NULL
+        LIMIT 1
+      `)
+      .bind(slug)
+      .first();
+
+  if (!existing) {
+    return jsonResponse(
+      {
+        success: false,
+        error: "Recipe not found",
+        message:
+          "Рецепт не найден или был удалён.",
+      },
+      404
+    );
+  }
+
+  const id = existing.id;
+
+  const ingredients =
+    normalizeIngredients(
+      payload.ingredients
+    );
+
+  const steps =
+    normalizeSteps(payload.steps);
+
+  const validationFields = {};
+
+  if (!ingredients.length) {
+    validationFields.ingredients =
+      "Добавьте хотя бы один ингредиент.";
+  }
+
+  if (!steps.length) {
+    validationFields.steps =
+      "Добавьте хотя бы один шаг приготовления.";
+  }
+
+  if (
+    Object.keys(validationFields)
+      .length
+  ) {
+    return jsonResponse(
+      {
+        success: false,
+        error: "Validation failed",
+        fields: validationFields,
+      },
+      400
+    );
+  }
+
+  let sourceUrl;
+  let imageSourceUrl;
+
+  try {
+    sourceUrl =
+      normalizeHttpUrl(
+        payload.sourceUrl ??
+        payload.source_url
+      );
+
+    imageSourceUrl =
+      normalizeHttpUrl(
+        payload.imageSourceUrl ??
+        payload.image_source_url
+      );
+  } catch (error) {
+    return jsonResponse(
+      {
+        success: false,
+        error: "Validation failed",
+
+        message:
+          error instanceof Error
+            ? error.message
+            : "Некорректная ссылка.",
+      },
+      400
+    );
+  }
+
+  const categories =
+    normalizeNamedList([
+      ...(
+        Array.isArray(
+          payload.categories
+        )
+          ? payload.categories
+          : []
+      ),
+
+      ...(
+        payload.category
+          ? [payload.category]
+          : []
+      ),
+    ]);
+
+  if (!categories.length) {
+    categories.push(
+      "Без категории"
+    );
+  }
+
+  const tags =
+    normalizeNamedList(
+      payload.tags
+    );
+
+  const statements = [];
+
+  statements.push(
+    env.DB
+      .prepare(`
+        UPDATE recipes
+        SET
+          title = ?,
+          description = ?,
+
+          servings = ?,
+          servings_text = ?,
+          servings_min = ?,
+          servings_max = ?,
+
+          prep_minutes = ?,
+          cook_minutes = ?,
+          total_minutes = ?,
+
+          source_name = ?,
+          source_url = ?,
+
+          image_key = ?,
+          image_source_url = ?,
+          image_credit = ?,
+
+          tips = ?,
+          serve_with = ?,
+          notes = ?,
+          batch_tip = ?,
+          highlight = ?,
+
+          nutrition_basis = ?,
+          calories_kcal = ?,
+          protein_g = ?,
+          fat_g = ?,
+          carbs_g = ?,
+
+          is_verified = ?,
+          is_weekly_prep = ?,
+          is_favorite = ?,
+
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `)
+      .bind(
+        title,
+        stringOrNull(
+          payload.description
+        ),
+
+        numberOrNull(
+          payload.servings
+        ),
+
+        stringOrNull(
+          payload.servingsText ??
+          payload.servings_text
+        ),
+
+        numberOrNull(
+          payload.servingsMin ??
+          payload.servings_min
+        ),
+
+        numberOrNull(
+          payload.servingsMax ??
+          payload.servings_max
+        ),
+
+        integerOrNull(
+          payload.prepMinutes ??
+          payload.prep_minutes
+        ),
+
+        integerOrNull(
+          payload.cookMinutes ??
+          payload.cook_minutes
+        ),
+
+        integerOrNull(
+          payload.totalMinutes ??
+          payload.total_minutes
+        ),
+
+        stringOrNull(
+          payload.sourceName ??
+          payload.source_name
+        ),
+
+        sourceUrl,
+
+        stringOrNull(
+          payload.imageKey ??
+          payload.image_key
+        ),
+
+        imageSourceUrl,
+
+        stringOrNull(
+          payload.imageCredit ??
+          payload.image_credit
+        ),
+
+        stringOrNull(
+          payload.tips
+        ),
+
+        stringOrNull(
+          payload.serveWith ??
+          payload.serve_with
+        ),
+
+        stringOrNull(
+          payload.notes
+        ),
+
+        stringOrNull(
+          payload.batchTip ??
+          payload.batch_tip
+        ),
+
+        stringOrNull(
+          payload.highlight
+        ),
+
+        stringOrNull(
+          payload.nutritionBasis ??
+          payload.nutrition_basis
+        ),
+
+        numberOrNull(
+          payload.caloriesKcal ??
+          payload.calories_kcal
+        ),
+
+        numberOrNull(
+          payload.proteinG ??
+          payload.protein_g
+        ),
+
+        numberOrNull(
+          payload.fatG ??
+          payload.fat_g
+        ),
+
+        numberOrNull(
+          payload.carbsG ??
+          payload.carbs_g
+        ),
+
+        booleanToInteger(
+          payload.isVerified ??
+          payload.is_verified
+        ),
+
+        booleanToInteger(
+          payload.isWeeklyPrep ??
+          payload.is_weekly_prep
+        ),
+
+        booleanToInteger(
+          payload.isFavorite ??
+          payload.is_favorite
+        ),
+
+        id
+      )
+  );
+
+  statements.push(
+    env.DB
+      .prepare(
+        `DELETE FROM ingredients WHERE recipe_id = ?`
+      )
+      .bind(id)
+  );
+
+  for (
+    const ingredient
+    of ingredients
+  ) {
+    statements.push(
+      env.DB
+        .prepare(`
+          INSERT INTO ingredients (
+            recipe_id,
+            position,
+            section,
+            name,
+            amount,
+            amount_min,
+            amount_max,
+            unit,
+            raw_text
+          )
+          VALUES (
+            ?, ?, ?, ?, ?,
+            ?, ?, ?, ?
+          )
+        `)
+        .bind(
+          id,
+          ingredient.position,
+          ingredient.section,
+          ingredient.name,
+          ingredient.amount,
+          ingredient.amountMin,
+          ingredient.amountMax,
+          ingredient.unit,
+          ingredient.rawText
+        )
+    );
+  }
+
+  statements.push(
+    env.DB
+      .prepare(
+        `DELETE FROM steps WHERE recipe_id = ?`
+      )
+      .bind(id)
+  );
+
+  for (const step of steps) {
+    statements.push(
+      env.DB
+        .prepare(`
+          INSERT INTO steps (
+            recipe_id,
+            position,
+            section,
+            instruction
+          )
+          VALUES (?, ?, ?, ?)
+        `)
+        .bind(
+          id,
+          step.position,
+          step.section,
+          step.instruction
+        )
+    );
+  }
+
+  statements.push(
+    env.DB
+      .prepare(
+        `DELETE FROM recipe_categories WHERE recipe_id = ?`
+      )
+      .bind(id)
+  );
+
+  for (
+    const categoryName
+    of categories.slice(0, 20)
+  ) {
+    const categorySlug =
+      slugify(categoryName) ||
+      `category-${
+        crypto
+          .randomUUID()
+          .slice(0, 8)
+      }`;
+
+    statements.push(
+      env.DB
+        .prepare(`
+          INSERT OR IGNORE
+          INTO categories (
+            name,
+            slug
+          )
+          VALUES (?, ?)
+        `)
+        .bind(
+          categoryName,
+          categorySlug
+        )
+    );
+
+    statements.push(
+      env.DB
+        .prepare(`
+          INSERT OR IGNORE
+          INTO recipe_categories (
+            recipe_id,
+            category_id
+          )
+          SELECT ?, id
+          FROM categories
+          WHERE slug = ?
+        `)
+        .bind(
+          id,
+          categorySlug
+        )
+    );
+  }
+
+  statements.push(
+    env.DB
+      .prepare(
+        `DELETE FROM recipe_tags WHERE recipe_id = ?`
+      )
+      .bind(id)
+  );
+
+  for (
+    const tagName
+    of tags.slice(0, 30)
+  ) {
+    const tagSlug =
+      slugify(tagName) ||
+      `tag-${
+        crypto
+          .randomUUID()
+          .slice(0, 8)
+      }`;
+
+    statements.push(
+      env.DB
+        .prepare(`
+          INSERT OR IGNORE
+          INTO tags (
+            name,
+            slug
+          )
+          VALUES (?, ?)
+        `)
+        .bind(
+          tagName,
+          tagSlug
+        )
+    );
+
+    statements.push(
+      env.DB
+        .prepare(`
+          INSERT OR IGNORE
+          INTO recipe_tags (
+            recipe_id,
+            tag_id
+          )
+          SELECT ?, id
+          FROM tags
+          WHERE slug = ?
+        `)
+        .bind(
+          id,
+          tagSlug
+        )
+    );
+  }
+
+  try {
+    await env.DB.batch(
+      statements
+    );
+  } catch (error) {
+    console.error(
+      "Recipe update failed:",
+      error
+    );
+
+    return jsonResponse(
+      {
+        success: false,
+        error:
+          "Database write failed",
+
+        message:
+          "Не удалось сохранить изменения в базе.",
+
+        details:
+          error instanceof Error
+            ? error.message
+            : String(error),
+      },
+      500
+    );
+  }
+
+  return jsonResponse(
+    {
+      success: true,
+      message:
+        "Изменения сохранены.",
+
+      item: {
+        id,
+        slug,
+        title,
+
+        url:
+          `${url.origin}/recipe?slug=` +
+          encodeURIComponent(slug),
+      },
+    },
+    200
   );
 }
 
@@ -1910,6 +2533,28 @@ export default {
           request,
           env,
           url
+        );
+      }
+
+      const editMatch =
+        url.pathname.match(
+          /^\/api\/(?:admin|assistant)\/recipes\/([^/]+)$/
+        );
+
+      if (
+        request.method === "PUT" &&
+        editMatch
+      ) {
+        const slug =
+          decodeURIComponent(
+            editMatch[1]
+          );
+
+        return updateRecipe(
+          request,
+          env,
+          url,
+          slug
         );
       }
 

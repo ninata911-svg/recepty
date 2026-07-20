@@ -352,6 +352,8 @@ const removeImageButton =
 let previewObjectUrl = null;
 let currentImport = null;
 let importedImageSourceUrl = null;
+let editingSlug = null;
+let existingImageKey = null;
 
 function getStoredKey() {
   return sessionStorage.getItem(ADMIN_KEY_STORAGE) || "";
@@ -1091,7 +1093,9 @@ function showSavedRecipe(item) {
   const text = document.createElement("span");
 
   text.textContent =
-    `Рецепт «${item.title}» добавлен. `;
+    editingSlug
+      ? `Рецепт «${item.title}» обновлён. `
+      : `Рецепт «${item.title}» добавлен. `;
 
   const link = document.createElement("a");
 
@@ -1100,6 +1104,8 @@ function showSavedRecipe(item) {
 
   saveStatus.append(text, link);
   saveStatus.hidden = false;
+
+  clearEditingState();
 
   saveStatus.scrollIntoView({
     behavior: "smooth",
@@ -1589,7 +1595,6 @@ function applyImportedRecipe() {
       currentImport.imageSourceUrl
     );
   }
-
   setStatus(
     saveStatus,
     "Данные перенесены в форму. Проверьте название, ингредиенты, шаги и метки. Рецепт ещё не сохранён.",
@@ -1600,6 +1605,115 @@ function applyImportedRecipe() {
     behavior: "smooth",
     block: "start",
   });
+}
+
+function applyExistingRecipe(item) {
+  editingSlug = item.slug || null;
+  existingImageKey = item.image_key || null;
+
+  recipeForm.reset();
+  categoryPicker?.clear();
+  tagPicker?.clear();
+  clearImagePreview();
+  hideStatus(saveStatus);
+
+  setFieldValue("title", item.title);
+  setFieldValue("description", item.description);
+
+  const categoryNames =
+    Array.isArray(item.categories)
+      ? item.categories
+          .map((c) => (typeof c === "string" ? c : c?.name))
+          .filter(Boolean)
+      : [];
+
+  categoryPicker?.setSelected(
+    categoryNames.length ? categoryNames : ["Без категории"]
+  );
+
+  const tagNames = Array.isArray(item.tags)
+    ? item.tags
+        .map((t) => (typeof t === "string" ? t : t?.name))
+        .filter(Boolean)
+    : [];
+
+  tagPicker?.setSelected(tagNames);
+
+  setFieldValue("servings", item.servings);
+  setFieldValue("servingsText", item.servings_text || item.servingsText);
+  setFieldValue("prepMinutes", item.prep_minutes ?? item.prepMinutes);
+  setFieldValue("cookMinutes", item.cook_minutes ?? item.cookMinutes);
+  setFieldValue("totalMinutes", item.total_minutes ?? item.totalMinutes);
+  setFieldValue("sourceName", item.source_name || item.sourceName || "Рецепт от Пети");
+  setFieldValue("sourceUrl", item.source_url || item.sourceUrl);
+  setFieldValue("imageCredit", item.image_credit || item.imageCredit || "");
+
+  setFieldValue(
+    "ingredients",
+    formatStructuredLines(item.ingredients, "ingredients")
+  );
+  setFieldValue(
+    "steps",
+    formatStructuredLines(item.steps, "steps")
+  );
+
+  setFieldValue("tips", item.tips);
+  setFieldValue("serveWith", item.serve_with ?? item.serveWith);
+  setFieldValue("highlight", item.highlight);
+  setFieldValue("batchTip", item.batch_tip ?? item.batchTip);
+  setFieldValue("notes", item.notes);
+
+  setCheckboxValue("isVerified", item.is_verified ?? item.isVerified);
+  setCheckboxValue("isFavorite", item.is_favorite ?? item.isFavorite);
+  setCheckboxValue("isWeeklyPrep", item.is_weekly_prep ?? item.isWeeklyPrep);
+
+  if (existingImageKey) {
+    importedImageSourceUrl = null;
+    imagePreview.src = `/images/${existingImageKey}`;
+    imageFileInfo.textContent =
+      "Текущая фотография. Загрузите новый файл, чтобы заменить.";
+    imagePreviewCard.hidden = false;
+  }
+
+  setEditorMode(Boolean(editingSlug));
+
+  setStatus(
+    saveStatus,
+    editingSlug
+      ? "Рецепт загружен для редактирования. Внесите изменения и нажмите «Сохранить рецепт»."
+      : "Данные загружены. Проверьте и сохраните.",
+    "success"
+  );
+
+  recipeForm.scrollIntoView({
+    behavior: "smooth",
+    block: "start",
+  });
+}
+
+function setEditorMode(isEditing) {
+  const titleEl = document.querySelector("#form-title");
+  const kickerEl = document.querySelector("#form-kicker");
+  const newButtonWrap = document.querySelector("#new-recipe-button-wrap");
+  const importBox = document.querySelector(".import-box");
+
+  if (isEditing) {
+    if (titleEl) titleEl.textContent = "Редактировать рецепт";
+    if (kickerEl) kickerEl.textContent = "Редактирование";
+    if (newButtonWrap) newButtonWrap.hidden = false;
+    if (importBox) importBox.hidden = true;
+  } else {
+    if (titleEl) titleEl.textContent = "Добавить рецепт";
+    if (kickerEl) kickerEl.textContent = "Новая карточка";
+    if (newButtonWrap) newButtonWrap.hidden = true;
+    if (importBox) importBox.hidden = false;
+  }
+}
+
+function clearEditingState() {
+  editingSlug = null;
+  existingImageKey = null;
+  setEditorMode(false);
 }
 
 async function requestImportPreview(url, key) {
@@ -1808,6 +1922,7 @@ logoutButton.addEventListener(
     importForm.reset();
     clearImagePreview();
     clearImportPreview();
+    clearEditingState();
     hideStatus(saveStatus);
     hideStatus(importStatus);
     showLogin();
@@ -1829,6 +1944,7 @@ resetButton.addEventListener(
     categoryPicker?.clear();
     tagPicker?.clear();
     clearImagePreview();
+    clearEditingState();
     hideStatus(saveStatus);
 
     setFieldValue("sourceName", "Рецепт от Пети");
@@ -1872,19 +1988,23 @@ recipeForm.addEventListener(
 
     saveButton.disabled = true;
     saveButton.textContent =
-      "Проверяем дубликаты…";
+      editingSlug
+        ? "Сохраняем изменения…"
+        : "Проверяем дубликаты…";
 
     try {
-      const existing =
-        await findExistingRecipe(
-          key,
-          payload.title,
-          payload.sourceUrl
-        );
+      if (!editingSlug) {
+        const existing =
+          await findExistingRecipe(
+            key,
+            payload.title,
+            payload.sourceUrl
+          );
 
-      if (existing) {
-        showDuplicate(existing);
-        return;
+        if (existing) {
+          showDuplicate(existing);
+          return;
+        }
       }
 
       if (imageFile) {
@@ -1926,6 +2046,9 @@ recipeForm.addEventListener(
 
         payload.imageKey =
           importedImage.imageKey;
+      } else if (existingImageKey) {
+        payload.imageKey = existingImageKey;
+        payload.imageSourceUrl = null;
       }
 
       saveButton.textContent =
@@ -1936,10 +2059,18 @@ recipeForm.addEventListener(
         "Сохраняем карточку рецепта…"
       );
 
+      const endpoint = editingSlug
+        ? `/api/admin/recipes/${encodeURIComponent(editingSlug)}`
+        : "/api/admin/recipes";
+
+      const method = editingSlug
+        ? "PUT"
+        : "POST";
+
       const response = await fetch(
-        "/api/admin/recipes",
+        endpoint,
         {
-          method: "POST",
+          method,
 
           headers: {
             Accept: "application/json",
@@ -2024,9 +2155,71 @@ async function initializeEditor() {
     }
 
     showEditor();
+
+    const params = new URLSearchParams(
+      window.location.search
+    );
+
+    const editSlug = params.get("edit");
+
+    if (editSlug) {
+      await loadRecipeForEdit(
+        editSlug,
+        storedKey
+      );
+    }
   } catch {
     removeKey();
     showLogin();
+  }
+}
+
+async function loadRecipeForEdit(slug, key) {
+  try {
+    saveButton.disabled = true;
+
+    setStatus(
+      saveStatus,
+      "Загружаем рецепт для редактирования…",
+      "success"
+    );
+
+    const response = await fetch(
+      `/api/recipes/${encodeURIComponent(slug)}`,
+      {
+        headers: {
+          Accept: "application/json",
+        },
+      }
+    );
+
+    const data = await response
+      .json()
+      .catch(() => null);
+
+    if (
+      !response.ok ||
+      !data?.success ||
+      !data?.item
+    ) {
+      throw new Error(
+        data?.error ||
+        data?.message ||
+        "Не удалось загрузить рецепт."
+      );
+    }
+
+    applyExistingRecipe(data.item);
+  } catch (error) {
+    setStatus(
+      saveStatus,
+      error instanceof Error
+        ? error.message
+        : "Не удалось загрузить рецепт.",
+      "error"
+    );
+  } finally {
+    saveButton.disabled = false;
   }
 }
 

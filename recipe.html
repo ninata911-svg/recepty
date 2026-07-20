@@ -135,7 +135,29 @@
         <p id="source"></p>
       </section>
     </article>
+
+    <div id="edit-recipe-wrap" class="admin-actions" hidden>
+      <a
+        id="edit-recipe-link"
+        class="secondary-button"
+        href="#"
+      >Редактировать</a>
+    </div>
   </main>
+
+  <script>
+    (function () {
+      if (sessionStorage.getItem("receptyAdminKey")) {
+        var wrap = document.getElementById("edit-recipe-wrap");
+        var link = document.getElementById("edit-recipe-link");
+        var slug = new URLSearchParams(window.location.search).get("slug");
+        if (wrap && link && slug) {
+          link.href = "/admin.html?edit=" + encodeURIComponent(slug);
+          wrap.hidden = false;
+        }
+      }
+    })();
+  </script>
 
   <script src="/assets/js/theme.js"></script>
   <script type="module" src="/assets/js/recipe.js"></script>
