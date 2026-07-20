@@ -1136,12 +1136,36 @@ function ingredientDisplayText(ingredient) {
     return ingredient;
   }
 
-  return (
+  const rawText =
     ingredient?.rawText ||
     ingredient?.raw_text ||
-    ingredient?.name ||
-    "Ингредиент"
-  );
+    "";
+
+  if (rawText.trim()) {
+    return rawText.trim();
+  }
+
+  const name = ingredient?.name || "Ингредиент";
+
+  const amount = ingredient?.amount ?? null;
+  const amountMin = ingredient?.amountMin ?? null;
+  const amountMax = ingredient?.amountMax ?? null;
+  const unit = ingredient?.unit || null;
+
+  let quantity = "";
+
+  if (amountMin !== null && amountMax !== null) {
+    quantity = `${amountMin}–${amountMax}`;
+  } else if (amount !== null) {
+    quantity = String(amount);
+  }
+
+  const quantityWithUnit =
+    [quantity, unit].filter(Boolean).join(" ");
+
+  return quantityWithUnit
+    ? `${name} — ${quantityWithUnit}`
+    : name;
 }
 
 function renderImportPreview(item, extraWarnings = []) {
@@ -1151,21 +1175,11 @@ function renderImportPreview(item, extraWarnings = []) {
     steps: Array.isArray(item?.steps) ? item.steps : [],
   });
 
-  const itemTags = Array.isArray(item?.tags) ? item.tags : [];
-
-  const mergedTags = [
-    ...(Array.isArray(suggested.tags) ? suggested.tags : []),
-    ...itemTags,
-  ].filter(
-    (value, index, self) =>
-      TAXONOMY.TAGS.includes(value) && self.indexOf(value) === index
-  );
-
   currentImport = {
     title: item?.title || "",
     description: item?.description || null,
     categories: suggested.categories,
-    tags: mergedTags,
+    tags: [],
     servings: item?.servings ?? null,
     servingsText: item?.servingsText ?? null,
     prepMinutes: item?.prepMinutes ?? null,
@@ -1183,7 +1197,7 @@ function renderImportPreview(item, extraWarnings = []) {
     notes: item?.notes || null,
     isVerified: Boolean(item?.isVerified),
     isFavorite: Boolean(item?.isFavorite),
-    isWeeklyPrep: mergedTags.includes("Заготовки на неделю"),
+    isWeeklyPrep: false,
     suggested,
     warnings: [
       ...(Array.isArray(item?.warnings) ? item.warnings : []),
@@ -1401,13 +1415,8 @@ function applyImportedRecipe() {
       ? currentImport.categories
       : suggested.categories) || [];
 
-  const suggestedTags =
-    (Array.isArray(currentImport.tags) && currentImport.tags.length
-      ? currentImport.tags
-      : suggested.tags) || [];
-
   categoryPicker?.setSelected(suggestedCategories);
-  tagPicker?.setSelected(suggestedTags);
+  tagPicker?.clear();
 
   setFieldValue("servings", currentImport.servings);
   setFieldValue("servingsText", currentImport.servingsText);
@@ -1444,12 +1453,7 @@ function applyImportedRecipe() {
 
   setCheckboxValue("isVerified", currentImport.isVerified);
   setCheckboxValue("isFavorite", currentImport.isFavorite);
-
-  const isWeeklyPrep =
-    (suggestedTags || []).includes("Заготовки на неделю") ||
-    Boolean(currentImport.isWeeklyPrep);
-
-  setCheckboxValue("isWeeklyPrep", isWeeklyPrep);
+  setCheckboxValue("isWeeklyPrep", false);
 
   if (
     currentImport.imageSourceUrl &&
