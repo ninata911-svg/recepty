@@ -1131,6 +1131,126 @@ function createMetaChip(text) {
   return chip;
 }
 
+function ingredientTextForCoalesce(ingredient) {
+  if (typeof ingredient === "string") {
+    return ingredient.trim();
+  }
+
+  if (!ingredient || typeof ingredient !== "object") {
+    return "";
+  }
+
+  const rawText =
+    ingredient.rawText ||
+    ingredient.raw_text ||
+    "";
+
+  if (rawText.trim()) {
+    return rawText.trim();
+  }
+
+  return (ingredient.name || "").trim();
+}
+
+function coalesceIngredientLines(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  const SEPARATOR_RE = /^[—–-]$/;
+
+  const lines = [];
+  let buffer = null;
+  let pendingSeparator = false;
+
+  function commitBuffer() {
+    if (buffer === null) {
+      return;
+    }
+
+    const text = buffer.trim();
+
+    buffer = null;
+    pendingSeparator = false;
+
+    if (text) {
+      lines.push(text);
+    }
+  }
+
+  function pushSection(section) {
+    commitBuffer();
+    lines.push({ section: section || null });
+  }
+
+  function looksLikeQuantity(text) {
+    return (
+      /^\d+(?:[.,]\d+)?\s*[^\s]/.test(text) ||
+      /^\d+(?:[.,]\d+)?\s*$/.test(text)
+    );
+  }
+
+  for (const item of items) {
+    const text = ingredientTextForCoalesce(item);
+
+    if (!text) {
+      if (item && typeof item === "object" && item.section) {
+        pushSection(item.section);
+      }
+      continue;
+    }
+
+    if (SEPARATOR_RE.test(text)) {
+      if (buffer !== null) {
+        pendingSeparator = true;
+      }
+      continue;
+    }
+
+    if (
+      buffer !== null &&
+      pendingSeparator &&
+      looksLikeQuantity(text)
+    ) {
+      buffer = `${buffer} — ${text}`;
+      pendingSeparator = false;
+      commitBuffer();
+      continue;
+    }
+
+    pendingSeparator = false;
+    commitBuffer();
+    buffer = text;
+  }
+
+  commitBuffer();
+
+  const merged = [];
+  let currentSection = null;
+
+  for (const entry of lines) {
+    if (typeof entry === "object" && entry !== null) {
+      currentSection = entry.section || null;
+      continue;
+    }
+
+    const rawText = String(entry).replace(/\s+/g, " ").trim();
+
+    merged.push({
+      position: merged.length + 1,
+      section: currentSection,
+      name: rawText.split(/\s+[—–-]\s+/)[0]?.trim() || rawText,
+      amount: null,
+      amountMin: null,
+      amountMax: null,
+      unit: null,
+      rawText,
+    });
+  }
+
+  return merged;
+}
+
 function ingredientDisplayText(ingredient) {
   if (typeof ingredient === "string") {
     return ingredient;
@@ -1169,9 +1289,15 @@ function ingredientDisplayText(ingredient) {
 }
 
 function renderImportPreview(item, extraWarnings = []) {
+  const rawIngredients =
+    Array.isArray(item?.ingredients) ? item.ingredients : [];
+
+  const ingredients =
+    coalesceIngredientLines(rawIngredients);
+
   const suggested = TAXONOMY.suggestCategoryAndTags({
     title: item?.title || "",
-    ingredients: Array.isArray(item?.ingredients) ? item.ingredients : [],
+    ingredients,
     steps: Array.isArray(item?.steps) ? item.steps : [],
   });
 
@@ -1188,7 +1314,7 @@ function renderImportPreview(item, extraWarnings = []) {
     imageSourceUrl: item?.imageSourceUrl || null,
     sourceName: item?.sourceName || null,
     sourceUrl: item?.sourceUrl || importUrlInput.value.trim(),
-    ingredients: Array.isArray(item?.ingredients) ? item.ingredients : [],
+    ingredients,
     steps: Array.isArray(item?.steps) ? item.steps : [],
     tips: item?.tips || null,
     serveWith: item?.serveWith || null,
