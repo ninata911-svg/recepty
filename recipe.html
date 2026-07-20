@@ -180,7 +180,7 @@
       <a
         id="edit-recipe-link"
         class="secondary-button"
-        href="#"
+        href="/admin"
       >Редактировать</a>
       <button
         id="delete-recipe-button"
@@ -199,8 +199,13 @@
         var deleteButton = document.getElementById("delete-recipe-button");
         var slug = new URLSearchParams(window.location.search).get("slug");
         if (wrap && link && slug) {
-          link.href = "/admin.html?edit=" + encodeURIComponent(slug);
+          link.href = "/admin?edit=" + encodeURIComponent(slug);
           wrap.hidden = false;
+          link.addEventListener("click", function (event) {
+            event.preventDefault();
+            window.location.href =
+              "/admin?edit=" + encodeURIComponent(slug);
+          });
           if (deleteButton) {
             deleteButton.hidden = false;
             deleteButton.addEventListener("click", function () {
