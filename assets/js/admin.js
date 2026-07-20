@@ -9,6 +9,12 @@ const ALLOWED_IMAGE_TYPES = new Set([
   "image/webp",
 ]);
 
+const TAXONOMY = window.ReceptyTaxonomy || {
+  CATEGORIES: [],
+  TAGS: [],
+  suggestCategoryAndTags: () => ({ categories: [], tags: [] }),
+};
+
 const loginSection =
   document.querySelector("#login-section");
 
@@ -92,6 +98,229 @@ const cancelImportButton =
 
 const recipeForm =
   document.querySelector("#recipe-form");
+
+const categoryPickerElement =
+  document.querySelector('#category-picker');
+
+const tagPickerElement =
+  document.querySelector('#tag-picker');
+
+function createPicker(rootElement, options) {
+  const allOptions = options.map((value) => ({ value, label: value }));
+
+  const trigger =
+    rootElement.querySelector("[data-picker-trigger]");
+  const panel =
+    rootElement.querySelector("[data-picker-panel]");
+  const summary =
+    rootElement.querySelector("[data-picker-summary]");
+  const searchInput =
+    rootElement.querySelector("[data-picker-search]");
+  const clearButton =
+    rootElement.querySelector("[data-picker-clear]");
+  const optionsContainer =
+    rootElement.querySelector("[data-picker-options]");
+
+  const checkboxes = new Map();
+
+  function buildOptions() {
+    optionsContainer.replaceChildren();
+
+    for (const option of allOptions) {
+      const label = document.createElement("label");
+      label.className = "picker-option";
+
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.value = option.value;
+      input.dataset.value = option.value;
+
+      const text = document.createElement("span");
+      text.textContent = option.label;
+
+      label.append(input, text);
+      optionsContainer.append(label);
+
+      checkboxes.set(option.value, input);
+
+      input.addEventListener("change", renderSummary);
+    }
+  }
+
+  function renderSummary() {
+    const selected = getSelected();
+
+    summary.replaceChildren();
+
+    if (!selected.length) {
+      const placeholder = document.createElement("span");
+      placeholder.className = "picker-placeholder";
+      placeholder.textContent =
+        rootElement.dataset.placeholder || "Выберите значения";
+      summary.append(placeholder);
+      clearButton.hidden = true;
+      return;
+    }
+
+    summary.textContent = selected.join(", ");
+    clearButton.hidden = false;
+  }
+
+  function getSelected() {
+    const selected = [];
+
+    for (const [value, input] of checkboxes) {
+      if (input.checked) {
+        selected.push(value);
+      }
+    }
+
+    return selected;
+  }
+
+  function setSelected(values) {
+    const normalized = new Set(
+      (Array.isArray(values) ? values : [])
+        .map((value) => String(value).trim())
+        .filter(Boolean)
+    );
+
+    for (const [value, input] of checkboxes) {
+      input.checked = normalized.has(value);
+    }
+
+    renderSummary();
+  }
+
+  function clear() {
+    setSelected([]);
+  }
+
+  function filterOptions(query) {
+    const normalizedQuery = query
+      .trim()
+      .toLocaleLowerCase("ru-RU");
+
+    let anyVisible = false;
+
+    for (const [value, input] of checkboxes) {
+      const label = input.parentElement;
+      const match =
+        !normalizedQuery ||
+        value.toLocaleLowerCase("ru-RU").includes(normalizedQuery);
+
+      label.hidden = !match;
+
+      if (match) {
+        anyVisible = true;
+      }
+    }
+
+    const existingEmpty =
+      optionsContainer.querySelector(".picker-empty");
+
+    if (!anyVisible && !existingEmpty) {
+      const empty = document.createElement("p");
+      empty.className = "picker-empty";
+      empty.textContent = "Ничего не найдено.";
+      optionsContainer.append(empty);
+    } else if (anyVisible && existingEmpty) {
+      existingEmpty.remove();
+    }
+  }
+
+  function open() {
+    panel.hidden = false;
+    rootElement.dataset.open = "true";
+    trigger.setAttribute("aria-expanded", "true");
+    searchInput.value = "";
+    filterOptions("");
+    searchInput.focus();
+  }
+
+  function close() {
+    panel.hidden = true;
+    delete rootElement.dataset.open;
+    trigger.setAttribute("aria-expanded", "false");
+  }
+
+  function toggle() {
+    if (panel.hidden) {
+      open();
+    } else {
+      close();
+    }
+  }
+
+  function isOpen() {
+    return !panel.hidden;
+  }
+
+  trigger.addEventListener("click", (event) => {
+    event.preventDefault();
+    toggle();
+  });
+
+  searchInput.addEventListener("input", () => {
+    filterOptions(searchInput.value);
+  });
+
+  clearButton.addEventListener("click", () => {
+    clear();
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!isOpen()) {
+      return;
+    }
+
+    if (!rootElement.contains(event.target)) {
+      close();
+    }
+  });
+
+  document.addEventListener("focusin", (event) => {
+    if (!isOpen()) {
+      return;
+    }
+
+    if (!rootElement.contains(event.target)) {
+      close();
+    }
+  });
+
+  searchInput.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      close();
+      trigger.focus();
+    }
+  });
+
+  buildOptions();
+  renderSummary();
+
+  return {
+    rootElement,
+    getSelected,
+    setSelected,
+    clear,
+    open,
+    close,
+  };
+}
+
+const categoryPicker =
+  categoryPickerElement
+    ? (categoryPickerElement.dataset.placeholder = "Выберите категории",
+       createPicker(categoryPickerElement, TAXONOMY.CATEGORIES))
+    : null;
+
+const tagPicker =
+  tagPickerElement
+    ? (tagPickerElement.dataset.placeholder = "Выберите метки",
+       createPicker(tagPickerElement, TAXONOMY.TAGS))
+    : null;
 
 const saveButton =
   document.querySelector("#save-button");
@@ -483,13 +712,6 @@ function parseSteps(text) {
   return steps;
 }
 
-function parseTags(value) {
-  return String(value)
-    .split(/,|\n/)
-    .map((tag) => tag.trim())
-    .filter(Boolean);
-}
-
 function normalizeComparison(value) {
   return String(value || "")
     .trim()
@@ -552,9 +774,12 @@ function buildPayload() {
   const totalMinutes =
     parseNumber(getFieldValue("totalMinutes"));
 
-  const category =
-    getFieldValue("category") ||
-    "Без категории";
+  const selectedCategories =
+    (categoryPicker?.getSelected() || []).slice(0, 20);
+
+  const categories = selectedCategories.length
+    ? selectedCategories
+    : ["Без категории"];
 
   return {
     title: getFieldValue("title"),
@@ -562,10 +787,10 @@ function buildPayload() {
     description:
       getFieldValue("description") || null,
 
-    category,
+    categories,
 
     tags:
-      parseTags(getFieldValue("tags")),
+      (tagPicker?.getSelected() || []).slice(0, 30),
 
     servings,
 
@@ -920,11 +1145,27 @@ function ingredientDisplayText(ingredient) {
 }
 
 function renderImportPreview(item, extraWarnings = []) {
+  const suggested = TAXONOMY.suggestCategoryAndTags({
+    title: item?.title || "",
+    ingredients: Array.isArray(item?.ingredients) ? item.ingredients : [],
+    steps: Array.isArray(item?.steps) ? item.steps : [],
+  });
+
+  const itemTags = Array.isArray(item?.tags) ? item.tags : [];
+
+  const mergedTags = [
+    ...(Array.isArray(suggested.tags) ? suggested.tags : []),
+    ...itemTags,
+  ].filter(
+    (value, index, self) =>
+      TAXONOMY.TAGS.includes(value) && self.indexOf(value) === index
+  );
+
   currentImport = {
     title: item?.title || "",
     description: item?.description || null,
-    category: item?.category || "Без категории",
-    tags: Array.isArray(item?.tags) ? item.tags : [],
+    categories: suggested.categories,
+    tags: mergedTags,
     servings: item?.servings ?? null,
     servingsText: item?.servingsText ?? null,
     prepMinutes: item?.prepMinutes ?? null,
@@ -942,7 +1183,8 @@ function renderImportPreview(item, extraWarnings = []) {
     notes: item?.notes || null,
     isVerified: Boolean(item?.isVerified),
     isFavorite: Boolean(item?.isFavorite),
-    isWeeklyPrep: Boolean(item?.isWeeklyPrep),
+    isWeeklyPrep: mergedTags.includes("Заготовки на неделю"),
+    suggested,
     warnings: [
       ...(Array.isArray(item?.warnings) ? item.warnings : []),
       ...extraWarnings,
@@ -968,8 +1210,12 @@ function renderImportPreview(item, extraWarnings = []) {
 
   const metaValues = [];
 
-  if (currentImport.category) {
-    metaValues.push(currentImport.category);
+  for (const categoryName of currentImport.categories) {
+    metaValues.push(categoryName);
+  }
+
+  for (const tagName of currentImport.tags) {
+    metaValues.push(`#${tagName}`);
   }
 
   if (currentImport.servingsText) {
@@ -1137,13 +1383,32 @@ function applyImportedRecipe() {
   }
 
   recipeForm.reset();
+  categoryPicker?.clear();
+  tagPicker?.clear();
   clearImagePreview();
   hideStatus(saveStatus);
 
   setFieldValue("title", currentImport.title);
   setFieldValue("description", currentImport.description);
-  setFieldValue("category", currentImport.category || "Без категории");
-  setFieldValue("tags", currentImport.tags.join(", "));
+
+  const suggested =
+    currentImport.suggested ||
+    TAXONOMY.suggestCategoryAndTags(currentImport);
+
+  const suggestedCategories =
+    (Array.isArray(currentImport.categories) &&
+      currentImport.categories.length
+      ? currentImport.categories
+      : suggested.categories) || [];
+
+  const suggestedTags =
+    (Array.isArray(currentImport.tags) && currentImport.tags.length
+      ? currentImport.tags
+      : suggested.tags) || [];
+
+  categoryPicker?.setSelected(suggestedCategories);
+  tagPicker?.setSelected(suggestedTags);
+
   setFieldValue("servings", currentImport.servings);
   setFieldValue("servingsText", currentImport.servingsText);
   setFieldValue("prepMinutes", currentImport.prepMinutes);
@@ -1179,7 +1444,12 @@ function applyImportedRecipe() {
 
   setCheckboxValue("isVerified", currentImport.isVerified);
   setCheckboxValue("isFavorite", currentImport.isFavorite);
-  setCheckboxValue("isWeeklyPrep", false);
+
+  const isWeeklyPrep =
+    (suggestedTags || []).includes("Заготовки на неделю") ||
+    Boolean(currentImport.isWeeklyPrep);
+
+  setCheckboxValue("isWeeklyPrep", isWeeklyPrep);
 
   if (
     currentImport.imageSourceUrl &&
@@ -1403,6 +1673,8 @@ logoutButton.addEventListener(
   () => {
     removeKey();
     recipeForm.reset();
+    categoryPicker?.clear();
+    tagPicker?.clear();
     importForm.reset();
     clearImagePreview();
     clearImportPreview();
@@ -1424,6 +1696,8 @@ resetButton.addEventListener(
     }
 
     recipeForm.reset();
+    categoryPicker?.clear();
+    tagPicker?.clear();
     clearImagePreview();
     hideStatus(saveStatus);
 

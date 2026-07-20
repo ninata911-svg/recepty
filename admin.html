@@ -409,6 +409,144 @@
       line-height: 1.4;
     }
 
+    .picker {
+      position: relative;
+      display: grid;
+      gap: 8px;
+    }
+
+    .picker-trigger {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-height: 48px;
+      padding: 12px 16px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--paper);
+      color: var(--text);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      overflow-wrap: anywhere;
+    }
+
+    .picker-trigger:focus,
+    .picker[data-open="true"] .picker-trigger {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
+      outline: none;
+    }
+
+    .picker-trigger .picker-summary {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .picker-trigger .picker-placeholder {
+      color: var(--muted);
+    }
+
+    .picker-caret {
+      flex-shrink: 0;
+      font-size: 12px;
+      color: var(--muted);
+      transition: transform .15s ease;
+    }
+
+    .picker[data-open="true"] .picker-caret {
+      transform: rotate(180deg);
+    }
+
+    .picker-panel {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      z-index: 30;
+      max-height: min(60vh, 360px);
+      overflow: auto;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--paper);
+      box-shadow: 0 18px 40px rgba(0, 0, 0, .12);
+    }
+
+    .picker-search {
+      width: 100%;
+      margin-bottom: 10px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--paper);
+      color: var(--text);
+      font: inherit;
+    }
+
+    .picker-search:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+      outline: none;
+    }
+
+    .picker-option {
+      display: grid;
+      grid-template-columns: 22px 1fr;
+      gap: 10px;
+      align-items: start;
+      padding: 9px 10px;
+      border-radius: 12px;
+      cursor: pointer;
+    }
+
+    .picker-option:hover,
+    .picker-option:focus-within {
+      background: var(--soft);
+    }
+
+    .picker-option input {
+      width: 18px;
+      height: 18px;
+      margin: 2px 0 0;
+    }
+
+    .picker-option span {
+      line-height: 1.4;
+    }
+
+    .picker-empty {
+      padding: 12px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .picker-clear {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      border: 0;
+      border-radius: 999px;
+      background: var(--soft);
+      color: var(--accent-dark);
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      margin-bottom: 8px;
+    }
+
+    .picker-clear[hidden] {
+      display: none;
+    }
+
+    @media (max-width: 720px) {
+      .picker-panel {
+        max-height: 70vh;
+      }
+    }
+
     [hidden] {
       display: none !important;
     }
@@ -698,28 +836,126 @@
             </div>
 
             <div class="form-field">
-              <label for="category">Категория</label>
+              <label>Категории</label>
 
-              <input
-                id="category"
-                name="category"
-                type="text"
-                placeholder="Например: Супы"
+              <div
+                id="category-picker"
+                class="picker"
+                data-picker="category"
               >
+                <button
+                  type="button"
+                  class="picker-trigger"
+                  data-picker-trigger
+                  aria-haspopup="listbox"
+                  aria-expanded="false"
+                >
+                  <span
+                    class="picker-summary"
+                    data-picker-summary
+                  >
+                    <span class="picker-placeholder">
+                      Выберите категории
+                    </span>
+                  </span>
+
+                  <span class="picker-caret">▼</span>
+                </button>
+
+                <div
+                  class="picker-panel"
+                  data-picker-panel
+                  hidden
+                >
+                  <input
+                    type="search"
+                    class="picker-search"
+                    placeholder="Найти категорию…"
+                    data-picker-search
+                  >
+
+                  <button
+                    type="button"
+                    class="picker-clear"
+                    data-picker-clear
+                    hidden
+                  >
+                    Сбросить
+                  </button>
+
+                  <div
+                    class="picker-options"
+                    data-picker-options
+                    role="listbox"
+                    aria-multiselectable="true"
+                  ></div>
+                </div>
+              </div>
+
+              <small>
+                Можно выбрать несколько. Свободного ввода нет.
+              </small>
             </div>
 
             <div class="form-field">
-              <label for="tags">Метки</label>
+              <label>Метки</label>
 
-              <input
-                id="tags"
-                name="tags"
-                type="text"
-                placeholder="Курица, домашнее, быстро"
+              <div
+                id="tag-picker"
+                class="picker"
+                data-picker="tag"
               >
+                <button
+                  type="button"
+                  class="picker-trigger"
+                  data-picker-trigger
+                  aria-haspopup="listbox"
+                  aria-expanded="false"
+                >
+                  <span
+                    class="picker-summary"
+                    data-picker-summary
+                  >
+                    <span class="picker-placeholder">
+                      Выберите метки
+                    </span>
+                  </span>
+
+                  <span class="picker-caret">▼</span>
+                </button>
+
+                <div
+                  class="picker-panel"
+                  data-picker-panel
+                  hidden
+                >
+                  <input
+                    type="search"
+                    class="picker-search"
+                    placeholder="Найти метку…"
+                    data-picker-search
+                  >
+
+                  <button
+                    type="button"
+                    class="picker-clear"
+                    data-picker-clear
+                    hidden
+                  >
+                    Сбросить
+                  </button>
+
+                  <div
+                    class="picker-options"
+                    data-picker-options
+                    role="listbox"
+                    aria-multiselectable="true"
+                  ></div>
+                </div>
+              </div>
 
               <small>
-                Разделяйте метки запятыми.
+                Отмечайте подходящие метки. Свободного ввода нет.
               </small>
             </div>
 
@@ -1070,6 +1306,7 @@
   </main>
 
   <script src="/assets/js/theme.js"></script>
+  <script src="/assets/js/taxonomy.js"></script>
   <script type="module" src="/assets/js/admin.js"></script>
 </body>
 </html>
