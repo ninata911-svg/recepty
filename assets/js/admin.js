@@ -1897,7 +1897,7 @@ loginForm.addEventListener(
 
       storeKey(key);
       showEditor();
-      loadDeletedRecipes(key);
+      setActiveTab("recipe");
     } catch (error) {
       setStatus(
         loginStatus,
@@ -2150,6 +2150,35 @@ const deletedRecipesStatus =
 const deletedRecipesSection =
   document.querySelector("#deleted-recipes-section");
 
+const adminTabs = Array.from(
+  document.querySelectorAll(".admin-tab")
+);
+
+let deletedRecipesLoaded = false;
+
+function setActiveTab(name) {
+  for (const tab of adminTabs) {
+    const selected = tab.dataset.tab === name;
+    tab.setAttribute("aria-selected", selected ? "true" : "false");
+  }
+
+  for (const panel of document.querySelectorAll("[data-panel]")) {
+    panel.hidden = panel.dataset.panel !== name;
+  }
+
+  if (name === "deleted") {
+    if (!deletedRecipesLoaded) {
+      loadDeletedRecipes();
+    }
+  }
+}
+
+for (const tab of adminTabs) {
+  tab.addEventListener("click", () => {
+    setActiveTab(tab.dataset.tab);
+  });
+}
+
 function formatDate(iso) {
   if (!iso) return "";
   const date = new Date(iso);
@@ -2163,17 +2192,11 @@ function formatDate(iso) {
   });
 }
 
-function setDeletedListVisible(visible) {
-  if (deletedRecipesSection) {
-    deletedRecipesSection.hidden = !visible;
-  }
-}
-
 function clearDeletedRecipes() {
-  setDeletedListVisible(false);
   if (deletedRecipesList) deletedRecipesList.replaceChildren();
   if (deletedRecipesEmpty) deletedRecipesEmpty.hidden = true;
   hideStatus(deletedRecipesStatus);
+  deletedRecipesLoaded = false;
 }
 
 function renderDeletedRecipes(items) {
@@ -2230,7 +2253,6 @@ function renderDeletedRecipes(items) {
 async function loadDeletedRecipes(key) {
   if (!deletedRecipesSection) return;
 
-  setDeletedListVisible(true);
   hideStatus(deletedRecipesStatus);
 
   const token = key || getStoredKey();
@@ -2271,6 +2293,7 @@ async function loadDeletedRecipes(key) {
       );
     }
 
+    deletedRecipesLoaded = true;
     renderDeletedRecipes(data.items || []);
   } catch (error) {
     setStatus(
@@ -2401,13 +2424,12 @@ async function initializeEditor() {
     const editSlug = params.get("edit");
 
     if (editSlug) {
+      setActiveTab("recipe");
       await loadRecipeForEdit(
         editSlug,
         storedKey
       );
     }
-
-    loadDeletedRecipes(storedKey);
   } catch {
     removeKey();
     showLogin();

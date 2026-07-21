@@ -189,6 +189,59 @@
       color: var(--accent-dark);
     }
 
+    .admin-tabs {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-bottom: 22px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--paper);
+    }
+
+    .admin-tab {
+      flex: 1 1 auto;
+      min-height: 44px;
+      padding: 10px 18px;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--text);
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      text-align: center;
+    }
+
+    .admin-tab[aria-selected="true"] {
+      background: var(--accent);
+      color: white;
+    }
+
+    .admin-tab:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+    }
+
+    [data-panel="deleted"][hidden],
+    [data-panel="recipe"][hidden] {
+      display: none !important;
+    }
+
+    @media (max-width: 720px) {
+      .admin-tabs {
+        display: flex;
+        flex-wrap: nowrap;
+        width: 100%;
+      }
+
+      .admin-tab {
+        flex: 1 1 0;
+        min-height: 48px;
+      }
+    }
+
     .editor-bar {
       display: flex;
       flex-wrap: wrap;
@@ -721,6 +774,38 @@
         </div>
       </div>
 
+      <div class="admin-tabs" role="tablist" aria-label="Разделы админки">
+        <button
+          type="button"
+          class="admin-tab"
+          role="tab"
+          id="tab-recipe"
+          aria-controls="panel-recipe"
+          aria-selected="true"
+          data-tab="recipe"
+        >
+          Добавить рецепт
+        </button>
+
+        <button
+          type="button"
+          class="admin-tab"
+          role="tab"
+          id="tab-deleted"
+          aria-controls="panel-deleted"
+          aria-selected="false"
+          data-tab="deleted"
+        >
+          Удалённые рецепты
+        </button>
+      </div>
+
+      <section
+        id="panel-recipe"
+        data-panel="recipe"
+        role="tabpanel"
+        aria-labelledby="tab-recipe"
+      >
       <div class="admin-intro">
         <p class="kicker" id="form-kicker">Новая карточка</p>
         <h1 id="form-title">Добавить рецепт</h1>
@@ -1354,8 +1439,16 @@
 
         <p id="save-status" class="status-message" hidden></p>
       </form>
+      </section>
 
-      <section class="block" id="deleted-recipes-section">
+      <section
+        class="block"
+        id="deleted-recipes-section"
+        data-panel="deleted"
+        role="tabpanel"
+        aria-labelledby="tab-deleted"
+        hidden
+      >
         <h2>Удалённые рецепты</h2>
 
         <p
