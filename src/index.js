@@ -1,3 +1,6 @@
+import { handleOAuthRoute } from "./mcp-oauth.js";
+import { handleMcp } from "./mcp.js";
+
 const textEncoder = new TextEncoder();
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -2648,6 +2651,16 @@ export default {
       new URL(request.url);
 
     try {
+      const oauthResponse = await handleOAuthRoute(request, env, url);
+      if (oauthResponse) {
+        return oauthResponse;
+      }
+
+      const mcpResponse = await handleMcp(request, env, url);
+      if (mcpResponse) {
+        return mcpResponse;
+      }
+
       if (
         ["GET", "HEAD"].includes(
           request.method
