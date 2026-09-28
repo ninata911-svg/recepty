@@ -13,7 +13,10 @@
     "binding": "ASSETS",
     "run_worker_first": [
       "/api/*",
-      "/images/*"
+      "/images/*",
+      "/mcp",
+      "/oauth/*",
+      "/.well-known/*"
     ]
   },
 
