@@ -1,5 +1,5 @@
 import { handleOAuthRoute } from "./mcp-oauth.js";
-import { handleMcp } from "./mcp.js";
+import { handleMcp, syncRecipeQueueFromAssets, getRecipeQueueStatus } from "./mcp.js";
 
 const textEncoder = new TextEncoder();
 
@@ -2704,7 +2704,36 @@ export default {
         url.pathname ===
           "/api/recipes"
       ) {
+        try {
+          await syncRecipeQueueFromAssets(
+            env,
+            url.origin
+          );
+        } catch (error) {
+          console.error(
+            "Recipe queue sync failed",
+            error
+          );
+        }
+
         return getRecipeCatalog(env);
+      }
+
+      if (
+        request.method === "GET" &&
+        url.pathname ===
+          "/api/recipe-queue/status"
+      ) {
+        const result =
+          await getRecipeQueueStatus(
+            env,
+            url.searchParams.get("id")
+          );
+
+        return jsonResponse(
+          result,
+          result.success ? 200 : 400
+        );
       }
 
       if (
