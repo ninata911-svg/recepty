@@ -1,5 +1,6 @@
-const SCOPES = ["recipes.read", "recipes.write"];
-const TOKEN_TTL = 30 * 24 * 60 * 60;
+const SCOPES = ["recipes.read", "recipes.write", "offline_access"];
+const TOKEN_TTL = 60 * 60;
+const REFRESH_TOKEN_TTL = 90 * 24 * 60 * 60;
 const CODE_TTL = 5 * 60;
 
 function json(data, status = 200, extraHeaders = {}) {
@@ -123,6 +124,17 @@ export async function ensureOAuthTables(env) {
         expires_at INTEGER NOT NULL
       )
     `),
+    env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS oauth_refresh_tokens (
+        token_hash TEXT PRIMARY KEY,
+        client_id TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        resource TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        revoked_at INTEGER
+      )
+    `),
   ]);
 }
 
@@ -142,7 +154,7 @@ function authorizationServerMetadata(origin) {
     token_endpoint: `${origin}/oauth/token`,
     registration_endpoint: `${origin}/oauth/register`,
     response_types_supported: ["code"],
-    grant_types_supported: ["authorization_code"],
+    grant_types_supported: ["authorization_code", "refresh_token"],
     token_endpoint_auth_methods_supported: ["none"],
     code_challenge_methods_supported: ["S256"],
     scopes_supported: SCOPES,
@@ -200,7 +212,7 @@ async function registerClient(request, env) {
       client_id_issued_at: now(),
       client_name: clientName,
       redirect_uris: redirectUris,
-      grant_types: ["authorization_code"],
+      grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
       token_endpoint_auth_method: "none",
     },
@@ -383,24 +395,76 @@ async function authorizePost(request, env, origin) {
   return Response.redirect(destination.href, 302);
 }
 
-async function token(request, env) {
+async function readTokenParams(request) {
   const contentType = request.headers.get("Content-Type") || "";
-  let params;
 
   if (contentType.includes("application/json")) {
     const payload = await request.json().catch(() => ({}));
-    params = new URLSearchParams();
+    const params = new URLSearchParams();
+
     for (const [key, value] of Object.entries(payload || {})) {
-      if (value !== undefined && value !== null) params.set(key, String(value));
+      if (value !== undefined && value !== null) {
+        params.set(key, String(value));
+      }
     }
-  } else {
-    params = new URLSearchParams(await request.text());
+
+    return params;
   }
 
-  if (params.get("grant_type") !== "authorization_code") {
-    return json({ error: "unsupported_grant_type" }, 400);
+  return new URLSearchParams(await request.text());
+}
+
+async function issueAccessToken(env, { clientId, scope, resource, includeRefreshToken }) {
+  const accessToken = randomToken();
+  const issued = now();
+  const statements = [
+    env.DB.prepare(`
+      INSERT INTO oauth_tokens
+        (token_hash, client_id, scope, resource, created_at, expires_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).bind(
+      await digestHex(accessToken),
+      clientId,
+      scope,
+      resource,
+      issued,
+      issued + TOKEN_TTL
+    ),
+  ];
+
+  let refreshToken = null;
+
+  if (includeRefreshToken) {
+    refreshToken = randomToken(48);
+
+    statements.push(
+      env.DB.prepare(`
+        INSERT INTO oauth_refresh_tokens
+          (token_hash, client_id, scope, resource, created_at, expires_at, revoked_at)
+        VALUES (?, ?, ?, ?, ?, ?, NULL)
+      `).bind(
+        await digestHex(refreshToken),
+        clientId,
+        scope,
+        resource,
+        issued,
+        issued + REFRESH_TOKEN_TTL
+      )
+    );
   }
 
+  await env.DB.batch(statements);
+
+  return {
+    access_token: accessToken,
+    token_type: "Bearer",
+    expires_in: TOKEN_TTL,
+    scope,
+    ...(refreshToken ? { refresh_token: refreshToken } : {}),
+  };
+}
+
+async function exchangeAuthorizationCode(params, env) {
   const code = params.get("code") || "";
   const clientId = params.get("client_id") || "";
   const verifier = params.get("code_verifier") || "";
@@ -440,34 +504,84 @@ async function token(request, env) {
     return json({ error: "invalid_grant" }, 400);
   }
 
-  const accessToken = randomToken();
   const issued = now();
+  await env.DB.prepare(
+    "UPDATE oauth_codes SET used_at = ? WHERE code_hash = ?"
+  ).bind(issued, codeHash).run();
 
-  await env.DB.batch([
-    env.DB.prepare("UPDATE oauth_codes SET used_at = ? WHERE code_hash = ?").bind(
-      issued,
-      codeHash
-    ),
-    env.DB.prepare(`
-      INSERT INTO oauth_tokens
-        (token_hash, client_id, scope, resource, created_at, expires_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).bind(
-      await digestHex(accessToken),
-      clientId,
-      row.scope,
-      row.resource,
-      issued,
-      issued + TOKEN_TTL
-    ),
-  ]);
-
-  return json({
-    access_token: accessToken,
-    token_type: "Bearer",
-    expires_in: TOKEN_TTL,
+  return json(await issueAccessToken(env, {
+    clientId,
     scope: row.scope,
-  });
+    resource: row.resource,
+    includeRefreshToken: hasScope(row.scope, "offline_access"),
+  }));
+}
+
+async function exchangeRefreshToken(params, env) {
+  const refreshToken = params.get("refresh_token") || "";
+  const clientId = params.get("client_id") || "";
+
+  if (!refreshToken || !clientId) {
+    return json({ error: "invalid_request" }, 400);
+  }
+
+  const tokenHash = await digestHex(refreshToken);
+  const row = await env.DB.prepare(`
+    SELECT client_id, scope, resource, expires_at, revoked_at
+    FROM oauth_refresh_tokens
+    WHERE token_hash = ?
+    LIMIT 1
+  `).bind(tokenHash).first();
+
+  if (
+    !row ||
+    row.revoked_at ||
+    row.expires_at < now() ||
+    row.client_id !== clientId
+  ) {
+    return json({ error: "invalid_grant" }, 400);
+  }
+
+  const requestedScope = params.get("scope");
+  let scope = row.scope;
+
+  if (requestedScope) {
+    const normalized = normalizeScope(requestedScope);
+    if (!normalized) {
+      return json({ error: "invalid_scope" }, 400);
+    }
+
+    const original = new Set(String(row.scope).split(/\s+/).filter(Boolean));
+    const requested = normalized.split(/\s+/).filter(Boolean);
+
+    if (requested.some((item) => !original.has(item))) {
+      return json({ error: "invalid_scope" }, 400);
+    }
+
+    scope = normalized;
+  }
+
+  return json(await issueAccessToken(env, {
+    clientId,
+    scope,
+    resource: row.resource,
+    includeRefreshToken: false,
+  }));
+}
+
+async function token(request, env) {
+  const params = await readTokenParams(request);
+  const grantType = params.get("grant_type");
+
+  if (grantType === "authorization_code") {
+    return exchangeAuthorizationCode(params, env);
+  }
+
+  if (grantType === "refresh_token") {
+    return exchangeRefreshToken(params, env);
+  }
+
+  return json({ error: "unsupported_grant_type" }, 400);
 }
 
 export function oauthChallenge(origin, scope) {
