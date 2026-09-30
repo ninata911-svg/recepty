@@ -745,6 +745,170 @@ async function createRecipe(args, env, origin) {
   };
 }
 
+
+export async function syncRecipeQueueFromAssets(env, origin) {
+  if (!env?.DB || !env?.ASSETS) {
+    return { success: false, error: "Queue sync bindings are unavailable." };
+  }
+
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS recipe_queue_imports (
+      queue_id TEXT PRIMARY KEY,
+      status TEXT NOT NULL,
+      recipe_id TEXT,
+      recipe_slug TEXT,
+      message TEXT,
+      processed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run();
+
+  let payload;
+  try {
+    const queueUrl = new URL("/recipe-queue.json", origin);
+    const response = await env.ASSETS.fetch(new Request(queueUrl.href, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    }));
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: `Queue asset returned HTTP ${response.status}.`,
+      };
+    }
+
+    payload = await response.json();
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  const items = Array.isArray(payload?.items) ? payload.items.slice(-500) : [];
+  let processed = 0;
+  let created = 0;
+  let duplicates = 0;
+  let errors = 0;
+
+  for (const entry of items) {
+    if (processed >= 20) break;
+
+    const queueId = stringOrNull(entry?.id);
+    const queuedRecipe =
+      entry?.recipe && typeof entry.recipe === "object" && !Array.isArray(entry.recipe)
+        ? entry.recipe
+        : null;
+
+    if (!queueId || !queuedRecipe) continue;
+
+    const alreadyProcessed = await env.DB.prepare(`
+      SELECT queue_id, status
+      FROM recipe_queue_imports
+      WHERE queue_id = ?
+      LIMIT 1
+    `).bind(queueId).first();
+
+    if (alreadyProcessed) continue;
+
+    processed += 1;
+    const recipe = { ...queuedRecipe };
+
+    if (!recipe.imageKey && !recipe.image_key && recipe.imageSourceUrl) {
+      try {
+        const uploaded = await uploadRecipeImage(
+          {
+            title: recipe.title || "recipe",
+            imageUrl: recipe.imageSourceUrl,
+          },
+          env,
+          origin
+        );
+
+        if (uploaded?.success && uploaded?.item?.imageKey) {
+          recipe.imageKey = uploaded.item.imageKey;
+        }
+      } catch {
+        // Keep the original imageSourceUrl as a fallback if R2 upload fails.
+      }
+    }
+
+    let result;
+    try {
+      result = await createRecipe(recipe, env, origin);
+    } catch (error) {
+      result = {
+        success: false,
+        error: "Queue import failed",
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
+
+    const status =
+      result?.success === true
+        ? "created"
+        : result?.error === "Duplicate recipe"
+          ? "duplicate"
+          : "error";
+
+    if (status === "created") created += 1;
+    else if (status === "duplicate") duplicates += 1;
+    else errors += 1;
+
+    await env.DB.prepare(`
+      INSERT INTO recipe_queue_imports (
+        queue_id, status, recipe_id, recipe_slug, message, processed_at
+      )
+      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `).bind(
+      queueId,
+      status,
+      result?.item?.id ?? result?.existing?.id ?? null,
+      result?.item?.slug ?? result?.existing?.slug ?? null,
+      stringOrNull(result?.message ?? result?.error)
+    ).run();
+  }
+
+  return {
+    success: true,
+    processed,
+    created,
+    duplicates,
+    errors,
+  };
+}
+
+export async function getRecipeQueueStatus(env, queueId) {
+  const id = stringOrNull(queueId);
+  if (!id) {
+    return { success: false, error: "Queue id is required." };
+  }
+
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS recipe_queue_imports (
+      queue_id TEXT PRIMARY KEY,
+      status TEXT NOT NULL,
+      recipe_id TEXT,
+      recipe_slug TEXT,
+      message TEXT,
+      processed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run();
+
+  const row = await env.DB.prepare(`
+    SELECT queue_id, status, recipe_id, recipe_slug, message, processed_at
+    FROM recipe_queue_imports
+    WHERE queue_id = ?
+    LIMIT 1
+  `).bind(id).first();
+
+  if (!row) {
+    return { success: true, status: "pending" };
+  }
+
+  return { success: true, ...row };
+}
+
 function rpc(id, result) {
   return new Response(JSON.stringify({ jsonrpc: "2.0", id, result }), {
     status: 200,
