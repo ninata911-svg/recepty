@@ -1,0 +1,87 @@
+name: Sync recipe queue
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "recipe-queue.json"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-recipe-queue
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Wait for Cloudflare to publish the new queue
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          EXPECTED_ID="$(jq -r '.items[-1].id // empty' recipe-queue.json)"
+          if [ -z "$EXPECTED_ID" ]; then
+            echo "Queue is empty; refreshing recipe index only."
+          else
+            echo "Waiting for deployed queue item: $EXPECTED_ID"
+            READY=0
+            for attempt in $(seq 1 30); do
+              REMOTE_ID="$(
+                curl -fsS --max-time 15                   https://recepty.ninata911.workers.dev/recipe-queue.json                   | jq -r '.items[-1].id // empty'                   || true
+              )"
+
+              if [ "$REMOTE_ID" = "$EXPECTED_ID" ]; then
+                READY=1
+                break
+              fi
+
+              echo "Cloudflare still has queue id '$REMOTE_ID' (attempt $attempt/30)."
+              sleep 10
+            done
+
+            if [ "$READY" -ne 1 ]; then
+              echo "Timed out waiting for the new Cloudflare deployment."
+              exit 1
+            fi
+          fi
+
+      - name: Trigger queue import and refresh public recipe index
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for attempt in $(seq 1 10); do
+            if curl -fsS --max-time 30               https://recepty.ninata911.workers.dev/api/recipes               -o recipe-index.json.tmp; then
+              mv recipe-index.json.tmp recipe-index.json
+              break
+            fi
+
+            echo "Recipe API not ready yet (attempt $attempt/10)."
+            sleep 10
+          done
+
+          test -s recipe-index.json
+          jq -e '.success == true and (.items | type == "array")' recipe-index.json >/dev/null
+
+      - name: Commit refreshed recipe index
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- recipe-index.json; then
+            echo "Recipe index is already current."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add recipe-index.json
+          git commit -m "Refresh recipe index"
+          git push
