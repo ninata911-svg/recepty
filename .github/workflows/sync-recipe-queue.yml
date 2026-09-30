@@ -75,7 +75,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          if git diff --quiet -- recipe-index.json; then
+          if [ -z "$(git status --porcelain -- recipe-index.json)" ]; then
             echo "Recipe index is already current."
             exit 0
           fi
