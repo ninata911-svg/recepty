@@ -6,8 +6,14 @@ const empty = document.querySelector("#empty");
 
 let recipes = [];
 
+const initialParams =
+  new URLSearchParams(window.location.search);
+
 let activeTag =
-  new URLSearchParams(window.location.search).get("tag") || "";
+  initialParams.get("tag") || "";
+
+let activeCategory =
+  initialParams.get("category") || "";
 
 function escapeHtml(value) {
   return String(value ?? "").replace(
@@ -202,7 +208,8 @@ function createStatusHtml(recipe) {
 
 function renderRecipes() {
   const query = search.value.trim().toLowerCase();
-  const selectedCategory = category.value;
+  const selectedCategory =
+    category.value || activeCategory;
 
   const filteredRecipes = recipes.filter((recipe) => {
     const searchableText = [
@@ -286,6 +293,13 @@ function fillCategories() {
       new Option(categoryName, categoryName)
     );
   }
+
+  if (
+    activeCategory &&
+    categories.includes(activeCategory)
+  ) {
+    category.value = activeCategory;
+  }
 }
 
 function showLoading() {
@@ -351,6 +365,19 @@ async function loadRecipes() {
 }
 
 search.addEventListener("input", renderRecipes);
-category.addEventListener("change", renderRecipes);
+category.addEventListener("change", () => {
+  activeCategory = category.value;
+
+  const url = new URL(window.location.href);
+
+  if (activeCategory) {
+    url.searchParams.set("category", activeCategory);
+  } else {
+    url.searchParams.delete("category");
+  }
+
+  window.history.replaceState(null, "", url);
+  renderRecipes();
+});
 
 loadRecipes();
