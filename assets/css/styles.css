@@ -140,6 +140,19 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 4px color-m
 }
 .block h2{margin:0 0 18px;font-family:Manrope,"Segoe UI",system-ui,sans-serif;font-weight:800;font-size:28px;line-height:1.15}
 .block h3{margin:24px 0 12px;color:var(--accent);font-size:18px;font-weight:700}
+
+#ingredients > h3{
+  margin:24px 0 8px;
+  padding:0;
+  color:var(--accent);
+  font-size:16px;
+  line-height:1.35;
+  font-weight:800;
+  letter-spacing:.01em;
+}
+#ingredients > h3:first-child{margin-top:0}
+#ingredients > ul + h3{margin-top:30px}
+#ingredients > ul{margin-bottom:0}
 .block ul{margin:0;padding-left:22px}
 .block li{margin:10px 0;line-height:1.7;font-weight:500}
 .steps{display:grid;gap:12px}

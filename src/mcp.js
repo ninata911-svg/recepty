@@ -746,6 +746,264 @@ async function createRecipe(args, env, origin) {
 }
 
 
+
+async function updateQueuedRecipe(recipe, env, origin, requestedSlug) {
+  const title = stringOrNull(recipe?.title);
+  if (!title) {
+    return {
+      success: false,
+      error: "Validation failed",
+      fields: { title: "Укажите название рецепта." },
+    };
+  }
+
+  const ingredients = normalizeIngredients(recipe.ingredients);
+  const steps = normalizeSteps(recipe.steps);
+  const fields = {};
+  if (!ingredients.length) fields.ingredients = "Добавьте хотя бы один ингредиент.";
+  if (!steps.length) fields.steps = "Добавьте хотя бы один шаг приготовления.";
+  if (Object.keys(fields).length) {
+    return { success: false, error: "Validation failed", fields };
+  }
+
+  let sourceUrl;
+  let imageSourceUrl;
+  try {
+    sourceUrl = normalizeHttpUrl(recipe.sourceUrl ?? recipe.source_url);
+    imageSourceUrl = normalizeHttpUrl(
+      recipe.imageSourceUrl ?? recipe.image_source_url
+    );
+  } catch (error) {
+    return {
+      success: false,
+      error: "Validation failed",
+      message: error instanceof Error ? error.message : "Некорректная ссылка.",
+    };
+  }
+
+  const slugHint = stringOrNull(requestedSlug ?? recipe.slug);
+  let existing = null;
+
+  if (slugHint) {
+    existing = await env.DB.prepare(`
+      SELECT id, slug, title, source_url
+      FROM recipes
+      WHERE slug = ?
+        AND deleted_at IS NULL
+      LIMIT 1
+    `).bind(slugHint).first();
+  }
+
+  if (!existing) {
+    existing = await findDuplicateRecipe(env.DB, title, sourceUrl);
+  }
+
+  if (!existing) {
+    return {
+      success: false,
+      error: "Recipe not found",
+      message: "Рецепт для обновления не найден.",
+    };
+  }
+
+  const id = existing.id;
+  const slug = existing.slug;
+
+  const categories = normalizeNamedList([
+    ...(Array.isArray(recipe.categories) ? recipe.categories : []),
+    ...(recipe.category ? [recipe.category] : []),
+  ]);
+  if (!categories.length) categories.push("Без категории");
+
+  const tags = normalizeNamedList(recipe.tags);
+  const statements = [];
+
+  statements.push(
+    env.DB.prepare(`
+      UPDATE recipes
+      SET
+        title = ?,
+        description = ?,
+        servings = ?,
+        servings_text = ?,
+        servings_min = ?,
+        servings_max = ?,
+        prep_minutes = ?,
+        cook_minutes = ?,
+        total_minutes = ?,
+        source_name = ?,
+        source_url = ?,
+        image_key = ?,
+        image_source_url = ?,
+        image_credit = ?,
+        tips = ?,
+        serve_with = ?,
+        notes = ?,
+        batch_tip = ?,
+        highlight = ?,
+        nutrition_basis = ?,
+        calories_kcal = ?,
+        protein_g = ?,
+        fat_g = ?,
+        carbs_g = ?,
+        is_verified = ?,
+        is_weekly_prep = ?,
+        is_favorite = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(
+      title,
+      stringOrNull(recipe.description),
+      numberOrNull(recipe.servings),
+      stringOrNull(recipe.servingsText ?? recipe.servings_text),
+      numberOrNull(recipe.servingsMin ?? recipe.servings_min),
+      numberOrNull(recipe.servingsMax ?? recipe.servings_max),
+      integerOrNull(recipe.prepMinutes ?? recipe.prep_minutes),
+      integerOrNull(recipe.cookMinutes ?? recipe.cook_minutes),
+      integerOrNull(recipe.totalMinutes ?? recipe.total_minutes),
+      stringOrNull(recipe.sourceName ?? recipe.source_name),
+      sourceUrl,
+      stringOrNull(recipe.imageKey ?? recipe.image_key),
+      imageSourceUrl,
+      stringOrNull(recipe.imageCredit ?? recipe.image_credit),
+      stringOrNull(recipe.tips),
+      stringOrNull(recipe.serveWith ?? recipe.serve_with),
+      stringOrNull(recipe.notes),
+      stringOrNull(recipe.batchTip ?? recipe.batch_tip),
+      stringOrNull(recipe.highlight),
+      stringOrNull(recipe.nutritionBasis ?? recipe.nutrition_basis),
+      numberOrNull(recipe.caloriesKcal ?? recipe.calories_kcal),
+      numberOrNull(recipe.proteinG ?? recipe.protein_g),
+      numberOrNull(recipe.fatG ?? recipe.fat_g),
+      numberOrNull(recipe.carbsG ?? recipe.carbs_g),
+      booleanToInteger(recipe.isVerified ?? recipe.is_verified),
+      booleanToInteger(recipe.isWeeklyPrep ?? recipe.is_weekly_prep),
+      booleanToInteger(recipe.isFavorite ?? recipe.is_favorite),
+      id
+    )
+  );
+
+  statements.push(
+    env.DB.prepare("DELETE FROM ingredients WHERE recipe_id = ?").bind(id)
+  );
+
+  for (const ingredient of ingredients) {
+    statements.push(
+      env.DB.prepare(`
+        INSERT INTO ingredients (
+          recipe_id, position, section, name, amount,
+          amount_min, amount_max, unit, raw_text
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        id,
+        ingredient.position,
+        ingredient.section,
+        ingredient.name,
+        ingredient.amount,
+        ingredient.amountMin,
+        ingredient.amountMax,
+        ingredient.unit,
+        ingredient.rawText
+      )
+    );
+  }
+
+  statements.push(
+    env.DB.prepare("DELETE FROM steps WHERE recipe_id = ?").bind(id)
+  );
+
+  for (const step of steps) {
+    statements.push(
+      env.DB.prepare(`
+        INSERT INTO steps (
+          recipe_id, position, section, instruction
+        )
+        VALUES (?, ?, ?, ?)
+      `).bind(
+        id,
+        step.position,
+        step.section,
+        step.instruction
+      )
+    );
+  }
+
+  statements.push(
+    env.DB.prepare("DELETE FROM recipe_categories WHERE recipe_id = ?").bind(id)
+  );
+
+  for (const categoryName of categories.slice(0, 20)) {
+    const categorySlug =
+      slugify(categoryName) || `category-${crypto.randomUUID().slice(0, 8)}`;
+
+    statements.push(
+      env.DB.prepare(`
+        INSERT OR IGNORE INTO categories (name, slug)
+        VALUES (?, ?)
+      `).bind(categoryName, categorySlug)
+    );
+
+    statements.push(
+      env.DB.prepare(`
+        INSERT OR IGNORE INTO recipe_categories (recipe_id, category_id)
+        SELECT ?, id
+        FROM categories
+        WHERE slug = ?
+      `).bind(id, categorySlug)
+    );
+  }
+
+  statements.push(
+    env.DB.prepare("DELETE FROM recipe_tags WHERE recipe_id = ?").bind(id)
+  );
+
+  for (const tagName of tags.slice(0, 30)) {
+    const tagSlug =
+      slugify(tagName) || `tag-${crypto.randomUUID().slice(0, 8)}`;
+
+    statements.push(
+      env.DB.prepare(`
+        INSERT OR IGNORE INTO tags (name, slug)
+        VALUES (?, ?)
+      `).bind(tagName, tagSlug)
+    );
+
+    statements.push(
+      env.DB.prepare(`
+        INSERT OR IGNORE INTO recipe_tags (recipe_id, tag_id)
+        SELECT ?, id
+        FROM tags
+        WHERE slug = ?
+      `).bind(id, tagSlug)
+    );
+  }
+
+  try {
+    await env.DB.batch(statements);
+  } catch (error) {
+    return {
+      success: false,
+      error: "Database write failed",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Не удалось сохранить изменения в базе.",
+    };
+  }
+
+  return {
+    success: true,
+    message: "Изменения из очереди сохранены.",
+    item: {
+      id,
+      slug,
+      title,
+      url: `${origin}/recipe?slug=${encodeURIComponent(slug)}`,
+    },
+  };
+}
+
 export async function syncRecipeQueueFromAssets(env, origin) {
   if (!env?.DB || !env?.ASSETS) {
     return { success: false, error: "Queue sync bindings are unavailable." };
@@ -788,6 +1046,7 @@ export async function syncRecipeQueueFromAssets(env, origin) {
   const items = Array.isArray(payload?.items) ? payload.items.slice(-500) : [];
   let processed = 0;
   let created = 0;
+  let updated = 0;
   let duplicates = 0;
   let errors = 0;
 
@@ -812,6 +1071,10 @@ export async function syncRecipeQueueFromAssets(env, origin) {
     if (alreadyProcessed) continue;
 
     processed += 1;
+    const action =
+      stringOrNull(entry?.action)?.toLowerCase() === "update"
+        ? "update"
+        : "create";
     const recipe = { ...queuedRecipe };
 
     if (!recipe.imageKey && !recipe.image_key && recipe.imageSourceUrl) {
@@ -835,7 +1098,10 @@ export async function syncRecipeQueueFromAssets(env, origin) {
 
     let result;
     try {
-      result = await createRecipe(recipe, env, origin);
+      result =
+        action === "update"
+          ? await updateQueuedRecipe(recipe, env, origin, entry?.slug)
+          : await createRecipe(recipe, env, origin);
     } catch (error) {
       result = {
         success: false,
@@ -846,12 +1112,15 @@ export async function syncRecipeQueueFromAssets(env, origin) {
 
     const status =
       result?.success === true
-        ? "created"
+        ? action === "update"
+          ? "updated"
+          : "created"
         : result?.error === "Duplicate recipe"
           ? "duplicate"
           : "error";
 
     if (status === "created") created += 1;
+    else if (status === "updated") updated += 1;
     else if (status === "duplicate") duplicates += 1;
     else errors += 1;
 
@@ -873,6 +1142,7 @@ export async function syncRecipeQueueFromAssets(env, origin) {
     success: true,
     processed,
     created,
+    updated,
     duplicates,
     errors,
   };
