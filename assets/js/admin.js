@@ -1898,6 +1898,19 @@ loginForm.addEventListener(
       storeKey(key);
       showEditor();
       setActiveTab("recipe");
+
+      const params = new URLSearchParams(
+        window.location.search
+      );
+
+      const editSlug = params.get("edit");
+
+      if (editSlug) {
+        await loadRecipeForEdit(
+          editSlug,
+          key
+        );
+      }
     } catch (error) {
       setStatus(
         loginStatus,
