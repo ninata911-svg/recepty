@@ -27,6 +27,31 @@
       ]
     },
     {
+      "id": "54aeb896-659c-4ac9-9119-439694159bf6",
+      "slug": "brusketta-s-seldyu-i-svekolnym-kremom",
+      "title": "Брускетта с сельдью и свекольным кремом",
+      "description": "Хрустящий ржаной хлеб со сливочно-свекольным кремом, маринованным луком и слабосолёной сельдью.",
+      "servings": 4,
+      "servings_text": "4 большие брускетты",
+      "servings_min": null,
+      "servings_max": null,
+      "prep_minutes": 15,
+      "cook_minutes": 50,
+      "total_minutes": 65,
+      "source_name": "Шеф Лебедев",
+      "source_url": "https://vk.ru/clip-228794664_456240629?c=1",
+      "image_key": "/images/recipes/brusketta-s-seldyu-i-svekolnym-kremom-782c5905-c68.webp",
+      "is_verified": 0,
+      "is_weekly_prep": 0,
+      "is_favorite": 0,
+      "created_at": "2026-10-01 04:48:07",
+      "updated_at": "2026-10-01 04:48:07",
+      "category": "Закуски",
+      "tags": [
+        "Рыба"
+      ]
+    },
+    {
       "id": "dd5375cd-3676-4462-8d5b-87bc113bc5a6",
       "slug": "gorohovaya-kasha-s-zharenym-lukom-i-bekonom",
       "title": "Гороховая каша с жареным луком и беконом",
