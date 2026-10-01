@@ -27,6 +27,31 @@
       ]
     },
     {
+      "id": "dd5375cd-3676-4462-8d5b-87bc113bc5a6",
+      "slug": "gorohovaya-kasha-s-zharenym-lukom-i-bekonom",
+      "title": "Гороховая каша с жареным луком и беконом",
+      "description": "Густая мягкая каша из сухого колотого гороха с румяной добавкой сверху.",
+      "servings": 4,
+      "servings_text": "4 порции",
+      "servings_min": null,
+      "servings_max": null,
+      "prep_minutes": 10,
+      "cook_minutes": 90,
+      "total_minutes": 100,
+      "source_name": "Рецепт от Пети",
+      "source_url": null,
+      "image_key": null,
+      "is_verified": 0,
+      "is_weekly_prep": 0,
+      "is_favorite": 0,
+      "created_at": "2026-10-01 04:39:03",
+      "updated_at": "2026-10-01 04:39:03",
+      "category": "Вторые блюда",
+      "tags": [
+        "Мясо"
+      ]
+    },
+    {
       "id": "b535f3cc-c6f2-4682-bd6a-648cb82f7cf2",
       "slug": "zhulen-s-kuricej-i-shampinonami",
       "title": "Жульен с курицей и шампиньонами",
