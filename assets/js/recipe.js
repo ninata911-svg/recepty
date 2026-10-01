@@ -362,8 +362,20 @@ function renderRecipe(recipe) {
   document.querySelector("#recipe-description").textContent =
     recipe.description || "";
 
-  document.querySelector("#recipe-category").textContent =
+  const categoryElement =
+    document.querySelector("#recipe-category");
+
+  const categoryName =
     recipe.categories?.[0]?.name || "Без категории";
+
+  categoryElement.replaceChildren();
+
+  const categoryLink = document.createElement("a");
+  categoryLink.href =
+    `/?category=${encodeURIComponent(categoryName)}`;
+  categoryLink.textContent = categoryName;
+
+  categoryElement.append(categoryLink);
 
   const cover = document.querySelector("#recipe-cover");
 
