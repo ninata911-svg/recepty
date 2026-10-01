@@ -92,6 +92,20 @@
   <main class="recipe-shell">
     <a class="back" href="/">← Все рецепты</a>
 
+    <div id="edit-recipe-wrap" class="admin-actions" hidden>
+      <a
+        id="edit-recipe-link"
+        class="secondary-button"
+        href="/admin"
+      >Редактировать</a>
+      <button
+        id="delete-recipe-button"
+        class="danger-button"
+        type="button"
+        hidden
+      >Удалить рецепт</button>
+    </div>
+
     <p id="recipe-loading">Загружаем рецепт…</p>
 
     <section
@@ -179,19 +193,6 @@
       </section>
     </article>
 
-    <div id="edit-recipe-wrap" class="admin-actions" hidden>
-      <a
-        id="edit-recipe-link"
-        class="secondary-button"
-        href="/admin"
-      >Редактировать</a>
-      <button
-        id="delete-recipe-button"
-        class="danger-button"
-        type="button"
-        hidden
-      >Удалить рецепт</button>
-    </div>
   </main>
 
   <script>
