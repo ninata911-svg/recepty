@@ -101,6 +101,31 @@
       ]
     },
     {
+      "id": "ec68da98-78f4-4af6-a664-24c95c8fa5cf",
+      "slug": "kartofelnaya-zapekanka-s-farshem",
+      "title": "Картофельная запеканка с фаршем",
+      "description": "Домашняя картофельная запеканка с мягким пюре, сочным мясным фаршем и румяной сырной корочкой.",
+      "servings": 6,
+      "servings_text": "6 порций",
+      "servings_min": null,
+      "servings_max": null,
+      "prep_minutes": 25,
+      "cook_minutes": 40,
+      "total_minutes": 65,
+      "source_name": "Рецепт от Пети",
+      "source_url": null,
+      "image_key": null,
+      "is_verified": 0,
+      "is_weekly_prep": 0,
+      "is_favorite": 0,
+      "created_at": "2026-10-07 08:29:29",
+      "updated_at": "2026-10-07 08:29:29",
+      "category": "Вторые блюда",
+      "tags": [
+        "Фарш"
+      ]
+    },
+    {
       "id": "bbfeec8d-6e1a-495b-bd43-80633962d86a",
       "slug": "kasha-grechnevaya-rassypchataya",
       "title": "Каша гречневая рассыпчатая",
