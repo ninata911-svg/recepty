@@ -2455,6 +2455,7 @@ async function getRecipeCatalog(
         WHERE r.deleted_at IS NULL
 
         ORDER BY
+          r.created_at DESC,
           r.title COLLATE NOCASE
       `)
       .all();
